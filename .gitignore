@@ -32,3 +32,6 @@
 *.swp
 
 build/*
+
+# Include Assets
+!assets/*.obj
