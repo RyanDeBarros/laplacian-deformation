@@ -103,8 +103,12 @@ int main(int argc, char *argv[])
 	selection_widget.callback = [&]()
 		{
 			selection_sets.selection_callback([&](Eigen::VectorXd& set, Eigen::Array<double, Eigen::Dynamic, 1>& and_visible)
-				{ screen_space_selection(V, F, tree, viewer.core().view, viewer.core().proj, viewer.core().viewport, selection_widget.L, set, and_visible); });
+				{
+					screen_space_selection(V, F, tree, viewer.core().view, viewer.core().proj, viewer.core().viewport, selection_widget.L, set, and_visible);
+				});
 			selection_sets.update(viewer.data());
+			auto fv = selection_sets.filter_anchor_vertices(V);
+			std::cout << fv.rows() << " " << fv.cols() << std::endl;
 		};
 	std::cout << R"(
 Usage:
