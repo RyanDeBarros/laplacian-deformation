@@ -1,4 +1,3 @@
-#include <igl/opengl/glfw/Viewer.h>
 #include <igl/read_triangle_mesh.h>
 #include <igl/list_to_matrix.h>
 #include <igl/matlab_format.h>
@@ -7,6 +6,7 @@
 
 #include <igl/opengl/glfw/imgui/ImGuiPlugin.h>
 #include <igl/opengl/glfw/imgui/SelectionWidget.h>
+#include <igl/opengl/glfw/imgui/ImGuiMenu.h>
 
 #define ASSET_FILEPATH(file) ("../assets/"#file)
 
@@ -22,35 +22,158 @@ static bool is_ctrl_pressed()
 		|| glfwGetKey(__viewer->window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
 }
 
+class SelectionSetManager
+{
+	Eigen::VectorXd anchor_set;
+	Eigen::VectorXd control_set;
+	Eigen::MatrixXd color_map;
+
+public:
+	enum class State
+	{
+		NEUTRAL,
+		ANCHOR,
+		CONTROL
+	} state = State::NEUTRAL;
+	bool only_visible = false;
+
+	SelectionSetManager(const Eigen::MatrixXd& V);
+
+	void update(igl::opengl::ViewerData& data) const;
+	const Eigen::VectorXd* current_set() const;
+	Eigen::VectorXd* current_set();
+	void deselect();
+	void selection_callback(const std::function<void(Eigen::VectorXd&, Eigen::Array<double, Eigen::Dynamic, 1>&)>& screen_space_select);
+};
+
+SelectionSetManager::SelectionSetManager(const Eigen::MatrixXd& V)
+{
+	anchor_set = Eigen::VectorXd::Zero(V.rows());
+	control_set = Eigen::VectorXd::Zero(V.rows());
+	color_map = (Eigen::MatrixXd(2, 3) << 0.5, 0.3, 0.5, 55.0 / 255.0, 228.0 / 255.0, 58.0 / 255.0).finished();
+}
+
+void SelectionSetManager::update(igl::opengl::ViewerData& data) const
+{
+	const bool was_face_based = data.face_based;
+	auto set = current_set();
+	if (set)
+	{
+		data.set_data(*set, 0, 1, igl::COLOR_MAP_TYPE_PLASMA, 2);
+		data.face_based = was_face_based;
+	}
+	data.set_colormap(color_map);
+}
+
+const Eigen::VectorXd* SelectionSetManager::current_set() const
+{
+	if (state == State::ANCHOR)
+		return &anchor_set;
+	else if (state == State::CONTROL)
+		return &control_set;
+	else
+		return nullptr;
+}
+
+Eigen::VectorXd* SelectionSetManager::current_set()
+{
+	if (state == State::ANCHOR)
+		return &anchor_set;
+	else if (state == State::CONTROL)
+		return &control_set;
+	else
+		return nullptr;
+}
+
+void SelectionSetManager::deselect()
+{
+	if (state == State::ANCHOR)
+		anchor_set.setZero();
+	else if (state == State::CONTROL)
+		control_set.setZero();
+}
+
+void SelectionSetManager::selection_callback(const std::function<void(Eigen::VectorXd&, Eigen::Array<double, Eigen::Dynamic, 1>&)>& screen_space_select)
+{
+	auto set = current_set();
+	if (set)
+	{
+		Eigen::VectorXd old_set;
+		if (is_shift_pressed() || is_ctrl_pressed())
+			old_set = *set;
+		Eigen::Array<double, Eigen::Dynamic, 1> and_visible = Eigen::Array<double, Eigen::Dynamic, 1>::Zero(set->rows());
+		screen_space_select(*set, and_visible);
+		if (only_visible) { set->array() *= and_visible; }
+		if (is_shift_pressed())
+			set->array() = old_set.array().max(set->array());
+		else if (is_ctrl_pressed())
+			*set = set->binaryExpr(old_set, [](double c, double old_c) { return std::max(old_c - c, 0.0); });
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	// Load the mesh
 	Eigen::MatrixXd V;
 	Eigen::MatrixXi F;
-	const char* filepath = argc > 1 ? argv[1] : ASSET_FILEPATH(elephant.obj);
-	if (!igl::read_triangle_mesh(filepath, V, F))
+	std::string filepath = argc > 1 ? argv[1] : ASSET_FILEPATH(elephant.obj);
+	while (!igl::read_triangle_mesh(filepath, V, F))
 	{
-		__debugbreak();
-		return -1;
+		std::cerr << "Unable to load mesh at filepath: " << filepath << std::endl;
+		std::cout << "Enter the filepath of the mesh you want to test on: " << std::endl;
+		if (!(std::cin >> filepath))
+		{
+			std::cin.clear();
+			std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+		}
 	}
 
 	igl::opengl::glfw::Viewer viewer;
 	igl::opengl::glfw::imgui::ImGuiPlugin imgui_plugin;
 	viewer.plugins.push_back(&imgui_plugin);
+	igl::opengl::glfw::imgui::ImGuiMenu menu_widget;
+	imgui_plugin.widgets.push_back(&menu_widget);
 	igl::opengl::glfw::imgui::SelectionWidget selection_widget;
 	imgui_plugin.widgets.push_back(&selection_widget);
 
-	Eigen::VectorXd W = Eigen::VectorXd::Zero(V.rows());
-	Eigen::Array<double, Eigen::Dynamic, 1> and_visible = Eigen::Array<double, Eigen::Dynamic, 1>::Zero(V.rows());
-	const Eigen::MatrixXd CM = (Eigen::MatrixXd(2, 3) << 0.3, 0.3, 0.5, 55.0 / 255.0, 228.0 / 255.0, 58.0 / 255.0).finished();
-	bool only_visible = false;
+	SelectionSetManager selection_sets(V);
 
-	const auto update = [&]()
+	menu_widget.callback_draw_custom_window = [&]()
 		{
-			const bool was_face_based = viewer.data().face_based;
-			viewer.data().set_data(W, 0, 1, igl::COLOR_MAP_TYPE_PLASMA, 2);
-			viewer.data().face_based = was_face_based;
-			viewer.data().set_colormap(CM);
+			ImGui::SetNextWindowPos(ImVec2(180.f * menu_widget.menu_scaling(), 10), ImGuiCond_FirstUseEver);
+			ImGui::SetNextWindowSize(ImVec2(400, 160), ImGuiCond_FirstUseEver);
+			ImGui::Begin("Laplacian Deformation", nullptr, ImGuiWindowFlags_NoSavedSettings);
+
+			ImGui::Text("Selection Set");
+			if (ImGui::BeginTabBar("Selection"))
+			{
+				if (ImGui::BeginTabItem("NEUTRAL"))
+				{
+					selection_sets.state = SelectionSetManager::State::NEUTRAL;
+					ImGui::EndTabItem();
+				}
+				if (ImGui::BeginTabItem("ANCHOR"))
+				{
+					selection_sets.state = SelectionSetManager::State::ANCHOR;
+					ImGui::EndTabItem();
+				}
+				if (ImGui::BeginTabItem("CONTROL"))
+				{
+					selection_sets.state = SelectionSetManager::State::CONTROL;
+					ImGui::EndTabItem();
+				}
+				ImGui::EndTabBar();
+			}
+
+			if (ImGui::Checkbox("Select only visible", &selection_sets.only_visible))
+				selection_sets.update(viewer.data());
+			if (ImGui::Button("Deselect"))
+			{
+				selection_sets.deselect();
+				selection_sets.update(viewer.data());
+			}
+
+			ImGui::End();
 		};
 
 	igl::AABB<Eigen::MatrixXd, 3> tree;
@@ -59,26 +182,16 @@ int main(int argc, char *argv[])
 		{
 			switch (key)
 			{
-			case ' ': only_visible = !only_visible; update(); return true; // TODO use another key, and display its state in imgui.
-			case 'D': case 'd': W.setZero(); update(); return true; // TODO eventually, only if the specific selection widget is toggled on. There is an Anchored selection widget, Transformed selection widget, and default neither.
+			case ' ': selection_sets.only_visible = !selection_sets.only_visible; selection_sets.update(viewer.data()); return true; // TODO use another key
+			case 'D': case 'd': selection_sets.deselect(); selection_sets.update(viewer.data()); return true;
 			}
 			return false;
 		};
 	selection_widget.callback = [&]()
 		{
-			Eigen::VectorXd old_W;
-			if (is_shift_pressed() || is_ctrl_pressed())
-				old_W = W;
-			screen_space_selection(V, F, tree, viewer.core().view, viewer.core().proj, viewer.core().viewport, selection_widget.L, W, and_visible);
-			if (only_visible) { W.array() *= and_visible; }
-			if (is_shift_pressed())
-			{
-				W.array() = old_W.array().max(W.array());
-				std::cout << "hi" << std::endl;
-			}
-			else if (is_ctrl_pressed())
-				W = W.binaryExpr(old_W, [](double c, double old_c) { return std::max(old_c - c, 0.0); });
-			update();
+			selection_sets.selection_callback([&](Eigen::VectorXd& set, Eigen::Array<double, Eigen::Dynamic, 1>& and_visible)
+				{ screen_space_selection(V, F, tree, viewer.core().view, viewer.core().proj, viewer.core().viewport, selection_widget.L, set, and_visible); });
+			selection_sets.update(viewer.data());
 		};
 	std::cout << R"(
 Usage:
@@ -89,10 +202,8 @@ Usage:
 	// Plot the mesh
 	viewer.data().set_mesh(V, F);
 	viewer.data().set_face_based(true);
-	viewer.core().background_color.head(3) = CM.row(0).head(3).cast<float>();
-	viewer.data().line_color.head(3) = (CM.row(0).head(3) * 0.5).cast<float>();
 	viewer.data().show_lines = F.rows() < 20000;
-	update();
+	selection_sets.update(viewer.data());
 
 	viewer.launch();
 }
