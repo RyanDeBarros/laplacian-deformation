@@ -32,14 +32,32 @@ Eigen::MatrixXd SelectionSetManager::filter_control_vertices(const Eigen::Matrix
 
 Eigen::MatrixXd SelectionSetManager::filter_vertices(const Eigen::MatrixXd& vertices, const Eigen::VectorXd& filter) const
 {
-	std::vector<Eigen::Index> filtered_indices;
-	for (Eigen::Index i = 0; i < filter.size(); ++i)
-		if (filter(i))
-			filtered_indices.push_back(i);
+	Eigen::VectorXd filtered_indices = indices(filter);
 	Eigen::MatrixXd filtered_vertices(filtered_indices.size(), vertices.cols());
 	for (int i = 0; i < filtered_indices.size(); ++i)
-		filtered_vertices.row(i) = vertices.row(filtered_indices[i]);
+		filtered_vertices.row(i) = vertices.row(filtered_indices(i));
 	return filtered_vertices;
+}
+
+Eigen::VectorXi SelectionSetManager::anchor_indices() const
+{
+	return indices(anchor_set);
+}
+
+Eigen::VectorXi SelectionSetManager::control_indices() const
+{
+	return indices(control_set);
+}
+
+Eigen::VectorXi SelectionSetManager::indices(const Eigen::VectorXd& filter) const
+{
+	Eigen::VectorXi filtered_indices(filter.size());
+	Eigen::Index count = 0;
+	for (Eigen::Index i = 0; i < filter.size(); ++i)
+		if (filter(i))
+			filtered_indices(count++) = i;
+	filtered_indices.conservativeResize(count);
+	return filtered_indices;
 }
 
 void SelectionSetManager::update(igl::opengl::ViewerData& data) const

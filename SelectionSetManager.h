@@ -22,6 +22,9 @@ public:
 	Eigen::MatrixXd filter_anchor_vertices(const Eigen::MatrixXd& vertices) const;
 	Eigen::MatrixXd filter_control_vertices(const Eigen::MatrixXd& vertices) const;
 	Eigen::MatrixXd filter_vertices(const Eigen::MatrixXd& vertices, const Eigen::VectorXd& filter) const;
+	Eigen::VectorXi anchor_indices() const;
+	Eigen::VectorXi control_indices() const;
+	Eigen::VectorXi indices(const Eigen::VectorXd& filter) const;
 	void update(igl::opengl::ViewerData& data) const;
 	void deselect();
 	void selection_callback(const std::function<void(Eigen::VectorXd&, Eigen::Array<double, Eigen::Dynamic, 1>&)>& screen_space_select);
