@@ -14,7 +14,7 @@ public:
 		ANCHOR,
 		CONTROL
 	} state = State::NEUTRAL;
-	bool only_visible = true;
+	bool only_visible = false;
 
 	SelectionSetManager(const Eigen::MatrixXd& V);
 

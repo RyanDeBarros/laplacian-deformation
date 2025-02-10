@@ -32,9 +32,9 @@ Eigen::MatrixXd SelectionSetManager::filter_control_vertices(const Eigen::Matrix
 
 Eigen::MatrixXd SelectionSetManager::filter_vertices(const Eigen::MatrixXd& vertices, const Eigen::VectorXd& filter) const
 {
-	Eigen::VectorXd filtered_indices = indices(filter);
-	Eigen::MatrixXd filtered_vertices(filtered_indices.size(), vertices.cols());
-	for (int i = 0; i < filtered_indices.size(); ++i)
+	Eigen::VectorXi filtered_indices = indices(filter);
+	Eigen::MatrixXd filtered_vertices(filtered_indices.rows(), vertices.cols());
+	for (int i = 0; i < filtered_indices.rows(); ++i)
 		filtered_vertices.row(i) = vertices.row(filtered_indices(i));
 	return filtered_vertices;
 }
@@ -51,9 +51,9 @@ Eigen::VectorXi SelectionSetManager::control_indices() const
 
 Eigen::VectorXi SelectionSetManager::indices(const Eigen::VectorXd& filter) const
 {
-	Eigen::VectorXi filtered_indices(filter.size());
+	Eigen::VectorXi filtered_indices(filter.rows());
 	Eigen::Index count = 0;
-	for (Eigen::Index i = 0; i < filter.size(); ++i)
+	for (Eigen::Index i = 0; i < filter.rows(); ++i)
 		if (filter(i))
 			filtered_indices(count++) = i;
 	filtered_indices.conservativeResize(count);
