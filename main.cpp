@@ -25,6 +25,7 @@ bool is_ctrl_pressed()
 		|| glfwGetKey(__viewer->window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
 }
 
+static const double gizmo_normalization_factor = 0.054519;
 struct ControlTransform
 {
 	float position[3] = { 0, 0, 0 };
@@ -67,6 +68,45 @@ struct ControlTransform
 		m_translation(1, 3) = position[1];
 		m_translation(2, 3) = position[2];
 		
+		return m_translation * m_rotation * m_scale;
+	}
+
+	Eigen::Matrix4f gizmo_matrix() const
+	{
+		Eigen::Matrix4f m_scale = Eigen::Matrix4f::Identity();
+		m_scale(0, 0) = scale[0];
+		m_scale(1, 1) = scale[1];
+		m_scale(2, 2) = scale[2];
+
+		double rx = rotation[0] * PI / 180;
+		double ry = rotation[1] * PI / 180;
+		double rz = rotation[2] * PI / 180;
+
+		Eigen::Matrix4f m_rot_x = Eigen::Matrix4f::Identity();
+		m_rot_x.block<3, 3>(0, 0) <<
+			1, 0, 0,
+			0, cos(rx), -sin(rx),
+			0, sin(rx), cos(rx);
+
+		Eigen::Matrix4f m_rot_y = Eigen::Matrix4f::Identity();
+		m_rot_y.block<3, 3>(0, 0) <<
+			cos(ry), 0, sin(ry),
+			0, 1, 0,
+			-sin(ry), 0, cos(ry);
+
+		Eigen::Matrix4f m_rot_z = Eigen::Matrix4f::Identity();
+		m_rot_z.block<3, 3>(0, 0) <<
+			cos(rz), -sin(rz), 0,
+			sin(rz), cos(rz), 0,
+			0, 0, 1;
+
+		Eigen::Matrix4f m_rotation = m_rot_z * m_rot_y * m_rot_x;
+
+		Eigen::Matrix4f m_translation = Eigen::Matrix4f::Identity();
+		m_translation(0, 3) = position[0] * gizmo_normalization_factor;
+		m_translation(1, 3) = position[1] * gizmo_normalization_factor;
+		m_translation(2, 3) = position[2] * gizmo_normalization_factor;
+
 		return m_translation * m_rotation * m_scale;
 	}
 
@@ -162,9 +202,7 @@ int main(int argc, char* argv[])
 				modification |= ImGui::InputFloat3("Rotation", control_transform.rotation);
 				modification |= ImGui::InputFloat3("Scale", control_transform.scale);
 				if (modification)
-				{
-					gizmo_widget.T = control_transform.matrix().cast<float>();
-				}
+					gizmo_widget.T = control_transform.gizmo_matrix();
 
 				ImGui::Separator();
 				ImGui::Text("Gizmo Type");
@@ -190,7 +228,7 @@ int main(int argc, char* argv[])
 				if (ImGui::Button("Reset"))
 				{
 					control_transform.reset();
-					gizmo_widget.T = control_transform.matrix().cast<float>();
+					gizmo_widget.T = control_transform.gizmo_matrix();
 				}
 			}
 			ImGui::EndChild();
@@ -228,7 +266,22 @@ int main(int argc, char* argv[])
 		};
 	gizmo_widget.operation = ImGuizmo::OPERATION::TRANSLATE;
 	gizmo_widget.callback = [&](const Eigen::Matrix4f& gizmo_transform) {
-		// TODO
+		control_transform.position[0] = gizmo_transform(0, 3) / gizmo_normalization_factor;
+		control_transform.position[1] = gizmo_transform(1, 3) / gizmo_normalization_factor;
+		control_transform.position[2] = gizmo_transform(2, 3) / gizmo_normalization_factor;
+
+		control_transform.scale[0] = gizmo_transform.block<3, 1>(0, 0).norm();
+		control_transform.scale[1] = gizmo_transform.block<3, 1>(0, 1).norm();
+		control_transform.scale[2] = gizmo_transform.block<3, 1>(0, 2).norm();
+
+		Eigen::Matrix3f m_rotation;
+		m_rotation.col(0) = gizmo_transform.block<3, 1>(0, 0) / control_transform.scale[0];
+		m_rotation.col(1) = gizmo_transform.block<3, 1>(0, 1) / control_transform.scale[1];
+		m_rotation.col(2) = gizmo_transform.block<3, 1>(0, 2) / control_transform.scale[2];
+		Eigen::Vector3f rotation = m_rotation.eulerAngles(0, 1, 2);
+		control_transform.rotation[0] = rotation[0] * 180 / PI;
+		control_transform.rotation[1] = rotation[1] * 180 / PI;
+		control_transform.rotation[2] = rotation[2] * 180 / PI;
 		};
 	selection_widget.callback = [&]()
 		{
