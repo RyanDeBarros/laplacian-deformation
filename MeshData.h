@@ -16,6 +16,5 @@ public:
 	const igl::AABB<Eigen::MatrixXd, 3>& get_tree() const { return tree; }
 
 	bool init(const std::string& mesh_filepath);
-	void compute_laplacian_matrix();
 	void deform(const Eigen::MatrixXd& user_constraints, const Eigen::VectorXi& user_constraint_indices);
 };

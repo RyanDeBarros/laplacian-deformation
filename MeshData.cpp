@@ -8,15 +8,10 @@ bool MeshData::init(const std::string& mesh_filepath)
 	if (igl::read_triangle_mesh(mesh_filepath, vertices, faces))
 	{
 		tree.init(vertices, faces);
-		compute_laplacian_matrix();
+		igl::cotmatrix(vertices, faces, laplacian);
 		return true;
 	}
 	return false;
-}
-
-void MeshData::compute_laplacian_matrix()
-{
-	igl::cotmatrix(vertices, faces, laplacian);
 }
 
 void MeshData::deform(const Eigen::MatrixXd& user_constraints, const Eigen::VectorXi& user_constraint_indices)
@@ -46,6 +41,4 @@ void MeshData::deform(const Eigen::MatrixXd& user_constraints, const Eigen::Vect
 	Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> solver;
 	solver.compute(Acombo);
 	vertices = solver.solve(Bcombo);
-
-	compute_laplacian_matrix(); // update laplacian TODO remove or keep ? it's only approximately equal to the previous laplacian matrix.
 }

@@ -73,41 +73,11 @@ struct ControlTransform
 
 	Eigen::Matrix4f gizmo_matrix() const
 	{
-		Eigen::Matrix4f m_scale = Eigen::Matrix4f::Identity();
-		m_scale(0, 0) = scale[0];
-		m_scale(1, 1) = scale[1];
-		m_scale(2, 2) = scale[2];
-
-		double rx = rotation[0] * PI / 180;
-		double ry = rotation[1] * PI / 180;
-		double rz = rotation[2] * PI / 180;
-
-		Eigen::Matrix4f m_rot_x = Eigen::Matrix4f::Identity();
-		m_rot_x.block<3, 3>(0, 0) <<
-			1, 0, 0,
-			0, cos(rx), -sin(rx),
-			0, sin(rx), cos(rx);
-
-		Eigen::Matrix4f m_rot_y = Eigen::Matrix4f::Identity();
-		m_rot_y.block<3, 3>(0, 0) <<
-			cos(ry), 0, sin(ry),
-			0, 1, 0,
-			-sin(ry), 0, cos(ry);
-
-		Eigen::Matrix4f m_rot_z = Eigen::Matrix4f::Identity();
-		m_rot_z.block<3, 3>(0, 0) <<
-			cos(rz), -sin(rz), 0,
-			sin(rz), cos(rz), 0,
-			0, 0, 1;
-
-		Eigen::Matrix4f m_rotation = m_rot_z * m_rot_y * m_rot_x;
-
-		Eigen::Matrix4f m_translation = Eigen::Matrix4f::Identity();
-		m_translation(0, 3) = position[0] * gizmo_normalization_factor;
-		m_translation(1, 3) = position[1] * gizmo_normalization_factor;
-		m_translation(2, 3) = position[2] * gizmo_normalization_factor;
-
-		return m_translation * m_rotation * m_scale;
+		ControlTransform gizmo_transform = *this;
+		gizmo_transform.position[0] *= gizmo_normalization_factor;
+		gizmo_transform.position[1] *= gizmo_normalization_factor;
+		gizmo_transform.position[2] *= gizmo_normalization_factor;
+		return gizmo_transform.matrix().cast<float>();
 	}
 
 	bool is_identity() const
@@ -159,6 +129,8 @@ int main(int argc, char* argv[])
 	SelectionSetManager selection_sets(mesh.get_vertices());
 	ControlTransform control_transform;
 
+	auto update = [&]() { selection_sets.update(viewer.data(), mesh.get_vertices()); };
+
 	menu_widget.callback_draw_viewer_window = [&]()
 		{
 			ImGui::SetNextWindowSize(ImVec2(400, 450), ImGuiCond_FirstUseEver);
@@ -186,11 +158,11 @@ int main(int argc, char* argv[])
 				ImGui::EndTabBar();
 			}
 			if (ImGui::Checkbox("Select only visible", &selection_sets.only_visible))
-				selection_sets.update(viewer.data());
+				update();
 			if (ImGui::Button("Deselect"))
 			{
 				selection_sets.deselect();
-				selection_sets.update(viewer.data());
+				update();
 			}
 			ImGui::EndChild();
 
@@ -289,15 +261,15 @@ int main(int argc, char* argv[])
 				{
 					screen_space_selection(mesh.get_vertices(), mesh.get_faces(), mesh.get_tree(), viewer.core().view, viewer.core().proj, viewer.core().viewport, selection_widget.L, set, and_visible);
 				});
-			selection_sets.update(viewer.data());
+			update();
 		};
 
 	viewer.callback_key_pressed = [&](decltype(viewer)&, unsigned int key, int mod)
 		{
 			switch (key)
 			{
-			case ' ': selection_sets.only_visible = !selection_sets.only_visible; selection_sets.update(viewer.data()); return true; // TODO use another key
-			case 'D': case 'd': selection_sets.deselect(); selection_sets.update(viewer.data()); return true;
+			case ' ': selection_sets.only_visible = !selection_sets.only_visible; update(); return true; // TODO use another key
+			case 'D': case 'd': selection_sets.deselect(); update(); return true;
 			}
 			return false;
 		};
@@ -309,9 +281,19 @@ Usage:
 
 	// Plot the mesh
 	viewer.data().set_mesh(mesh.get_vertices(), mesh.get_faces());
+	viewer.data().point_size = 10.0f;
 	viewer.data().set_face_based(true);
 	viewer.data().show_lines = mesh.get_faces().rows() < 20000;
-	selection_sets.update(viewer.data());
+	update();
+	Eigen::MatrixXd vertex_colors(mesh.get_vertices().rows(), 3);
 
+	// Set colors based on some property (here, randomly)
+	for (int i = 0; i < mesh.get_vertices().rows(); i++) {
+		vertex_colors.row(i) << (double)rand() / RAND_MAX,
+			(double)rand() / RAND_MAX,
+			(double)rand() / RAND_MAX;
+	}
+	//viewer.data().point_size = 10.0f;
+	//viewer.data().set_points(mesh.get_vertices(), vertex_colors);
 	viewer.launch(false, "Laplacian Deformation Tool", 1920, 1080); // TODO change window size
 }

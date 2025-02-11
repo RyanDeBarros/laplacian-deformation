@@ -1,38 +1,24 @@
 #include "SelectionSetManager.h"
 #include "Main.h"
 
-static const double anchor_color_value = 0.5;
-static const double control_color_value = 1.0;
-
 SelectionSetManager::SelectionSetManager(const Eigen::MatrixXd& V)
 {
-	anchor_set = Eigen::VectorXd::Zero(V.rows());
-	control_set = Eigen::VectorXd::Zero(V.rows());
-}
-
-const Eigen::VectorXd* SelectionSetManager::current_set() const
-{
-	if (state == State::ANCHOR)
-		return &anchor_set;
-	else if (state == State::CONTROL)
-		return &control_set;
-	else
-		return nullptr;
+	selection = Eigen::VectorXd::Zero(V.rows());
 }
 
 Eigen::MatrixXd SelectionSetManager::filter_anchor_vertices(const Eigen::MatrixXd& vertices) const
 {
-	return filter_vertices(vertices, anchor_set);
+	return filter_vertices(vertices, State::ANCHOR);
 }
 
 Eigen::MatrixXd SelectionSetManager::filter_control_vertices(const Eigen::MatrixXd& vertices) const
 {
-	return filter_vertices(vertices, control_set);
+	return filter_vertices(vertices, State::CONTROL);
 }
 
-Eigen::MatrixXd SelectionSetManager::filter_vertices(const Eigen::MatrixXd& vertices, const Eigen::VectorXd& filter) const
+Eigen::MatrixXd SelectionSetManager::filter_vertices(const Eigen::MatrixXd& vertices, State state) const
 {
-	Eigen::VectorXi filtered_indices = indices(filter);
+	Eigen::VectorXi filtered_indices = indices(state);
 	Eigen::MatrixXd filtered_vertices(filtered_indices.rows(), vertices.cols());
 	for (int i = 0; i < filtered_indices.rows(); ++i)
 		filtered_vertices.row(i) = vertices.row(filtered_indices(i));
@@ -41,70 +27,80 @@ Eigen::MatrixXd SelectionSetManager::filter_vertices(const Eigen::MatrixXd& vert
 
 Eigen::VectorXi SelectionSetManager::anchor_indices() const
 {
-	return indices(anchor_set);
+	return indices(State::ANCHOR);
 }
 
 Eigen::VectorXi SelectionSetManager::control_indices() const
 {
-	return indices(control_set);
+	return indices(State::CONTROL);
 }
 
-Eigen::VectorXi SelectionSetManager::indices(const Eigen::VectorXd& filter) const
+Eigen::VectorXi SelectionSetManager::indices(State state) const
 {
-	Eigen::VectorXi filtered_indices(filter.rows());
+	Eigen::VectorXi filtered_indices(selection.rows());
 	Eigen::Index count = 0;
-	for (Eigen::Index i = 0; i < filter.rows(); ++i)
-		if (filter(i))
+	for (Eigen::Index i = 0; i < selection.rows(); ++i)
+		if (round(selection(i)) == (int)state)
 			filtered_indices(count++) = i;
 	filtered_indices.conservativeResize(count);
 	return filtered_indices;
 }
 
-void SelectionSetManager::update(igl::opengl::ViewerData& data) const
+void SelectionSetManager::update(igl::opengl::ViewerData& data, const Eigen::MatrixXd& vertices)
 {
 	const bool was_face_based = data.face_based;
-	data.set_data(anchor_set.array() * anchor_color_value + control_set.array() * control_color_value, 0, 1);
+	Eigen::RowVector3d v0(0.5, 0.8, 0.5);
+	Eigen::RowVector3d v1(0.5, 0.5, 0.8);
+	Eigen::RowVector3d v2(0.8, 0.5, 0.5);
+	Eigen::MatrixXd colors(vertices.rows(), 3);
+	for (Eigen::Index i = 0; i < colors.rows(); ++i)
+	{
+		if (round(selection(i)) == (int)State::ANCHOR)
+			colors.row(i) = v1;
+		else if (round(selection(i)) == (int)State::CONTROL)
+			colors.row(i) = v2;
+		else
+			colors.row(i) = v0;
+	}
+	data.set_points(vertices, colors);
 	data.face_based = was_face_based;
 }
 
 void SelectionSetManager::deselect()
 {
-	if (state == State::ANCHOR)
-		anchor_set.setZero();
-	else if (state == State::CONTROL)
-		control_set.setZero();
+	if (state != State::NEUTRAL)
+	{
+		for (auto iter = selection.begin(); iter != selection.end(); ++iter)
+			if (round(*iter) == (int)state)
+				*iter = 0;
+	}
 }
 
 void SelectionSetManager::selection_callback(const std::function<void(Eigen::VectorXd&, Eigen::Array<double, Eigen::Dynamic, 1>&)>& screen_space_select)
 {
-	if (state == State::ANCHOR)
+	Eigen::Array<double, Eigen::Dynamic, 1> and_visible = Eigen::Array<double, Eigen::Dynamic, 1>::Zero(selection.rows());
+	Eigen::VectorXd new_selection;
+	screen_space_select(new_selection, and_visible);
+	if (only_visible)
+		new_selection.array() *= and_visible;
+	for (Eigen::Index i = 0; i < selection.rows(); ++i)
 	{
-		Eigen::VectorXd old_set;
-		if (is_shift_pressed() || is_ctrl_pressed())
-			old_set = anchor_set;
-		Eigen::Array<double, Eigen::Dynamic, 1> and_visible = Eigen::Array<double, Eigen::Dynamic, 1>::Zero(anchor_set.rows());
-		screen_space_select(anchor_set, and_visible);
-		if (only_visible)
-			anchor_set.array() *= and_visible;
 		if (is_shift_pressed())
-			anchor_set.array() = old_set.array().max(anchor_set.array());
+		{
+			if (round(new_selection(i)))
+				selection(i) = (int)state;
+		}
 		else if (is_ctrl_pressed())
-			anchor_set = anchor_set.binaryExpr(old_set, [](double c, double old_c) { return std::max(old_c - c, 0.0); });
-		control_set = control_set.binaryExpr(anchor_set, [](double control, double anchor) { return std::max(control - anchor, 0.0); });
-	}
-	else if (state == State::CONTROL)
-	{
-		Eigen::VectorXd old_set;
-		if (is_shift_pressed() || is_ctrl_pressed())
-			old_set = control_set;
-		Eigen::Array<double, Eigen::Dynamic, 1> and_visible = Eigen::Array<double, Eigen::Dynamic, 1>::Zero(control_set.rows());
-		screen_space_select(control_set, and_visible);
-		if (only_visible)
-			control_set.array() *= and_visible;
-		if (is_shift_pressed())
-			control_set.array() = old_set.array().max(control_set.array());
-		else if (is_ctrl_pressed())
-			control_set = control_set.binaryExpr(old_set, [](double c, double old_c) { return std::max(old_c - c, 0.0); });
-		anchor_set = anchor_set.binaryExpr(control_set, [](double anchor, double control) { return std::max(anchor - control, 0.0); });
+		{
+			if (round(new_selection(i)) && round(selection(i)) == (int)state)
+				selection(i) = 0;
+		}
+		else
+		{
+			if (round(new_selection(i)))
+				selection(i) = (int)state;
+			else if (round(selection(i)) == (int)state)
+				selection(i) = 0;
+		}
 	}
 }
