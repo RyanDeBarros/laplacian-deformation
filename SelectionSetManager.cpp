@@ -2,7 +2,7 @@
 
 #include "Main.h"
 
-SelectionSetManager::SelectionSetManager(const Eigen::MatrixXd& V)
+void SelectionSetManager::init(const Eigen::MatrixXd& V)
 {
 	selection = Eigen::VectorXd::Zero(V.rows());
 }

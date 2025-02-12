@@ -15,8 +15,7 @@ public:
 	} state = State::NEUTRAL;
 	bool only_visible = false;
 
-	SelectionSetManager(const Eigen::MatrixXd& V);
-
+	void init(const Eigen::MatrixXd& V);
 	Eigen::MatrixXd get_colors() const;
 	Eigen::MatrixXd filter_anchor_vertices(const Eigen::MatrixXd& vertices) const;
 	Eigen::MatrixXd filter_control_vertices(const Eigen::MatrixXd& vertices) const;
