@@ -1,9 +1,25 @@
 #include "SelectionSetManager.h"
+
 #include "Main.h"
 
 SelectionSetManager::SelectionSetManager(const Eigen::MatrixXd& V)
 {
 	selection = Eigen::VectorXd::Zero(V.rows());
+}
+
+Eigen::MatrixXd SelectionSetManager::get_colors() const
+{
+	Eigen::MatrixXd colors(selection.rows(), 3);
+	for (Eigen::Index i = 0; i < colors.rows(); ++i)
+	{
+		if (round(selection(i)) == (int)State::ANCHOR)
+			colors.row(i) = vertex_colors::anchor;
+		else if (round(selection(i)) == (int)State::CONTROL)
+			colors.row(i) = vertex_colors::control;
+		else
+			colors.row(i) = vertex_colors::neutral;
+	}
+	return colors;
 }
 
 Eigen::MatrixXd SelectionSetManager::filter_anchor_vertices(const Eigen::MatrixXd& vertices) const
@@ -44,26 +60,6 @@ Eigen::VectorXi SelectionSetManager::indices(State state) const
 			filtered_indices(count++) = i;
 	filtered_indices.conservativeResize(count);
 	return filtered_indices;
-}
-
-void SelectionSetManager::update(igl::opengl::ViewerData& data, const Eigen::MatrixXd& vertices)
-{
-	const bool was_face_based = data.face_based;
-	Eigen::RowVector3d v0(0.5, 0.8, 0.5);
-	Eigen::RowVector3d v1(0.5, 0.5, 0.8);
-	Eigen::RowVector3d v2(0.8, 0.5, 0.5);
-	Eigen::MatrixXd colors(vertices.rows(), 3);
-	for (Eigen::Index i = 0; i < colors.rows(); ++i)
-	{
-		if (round(selection(i)) == (int)State::ANCHOR)
-			colors.row(i) = v1;
-		else if (round(selection(i)) == (int)State::CONTROL)
-			colors.row(i) = v2;
-		else
-			colors.row(i) = v0;
-	}
-	data.set_points(vertices, colors);
-	data.face_based = was_face_based;
 }
 
 void SelectionSetManager::deselect()
