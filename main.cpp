@@ -46,7 +46,8 @@ struct LaplacianDeformationTool
 		bool call_deform = false;
 		double last_time_since_deform = 0.0;
 		double deform_rate = 1.0 / 10.0;
-		Eigen::Matrix4f gizmo_transform = Eigen::Matrix4f::Identity();
+		Eigen::Matrix4f delta_gizmo_transform = Eigen::Matrix4f::Identity();
+		Eigen::Matrix4f last_gizmo_transform = Eigen::Matrix4f::Identity();
 	} auto_deform;
 
 	decltype(selection_widget.mode) previous_on_mode;
@@ -56,6 +57,7 @@ struct LaplacianDeformationTool
 	void deform();
 	void set_selection_state(SelectionSetManager::State state);
 	void update_gizmo_transform();
+	void reset_gizmo_transform();
 };
 
 int main(int argc, char* argv[])
@@ -67,7 +69,7 @@ int main(int argc, char* argv[])
 void LaplacianDeformationTool::run(int argc, char* argv[])
 {
 	// Load the mesh
-	std::string filepath = argc > 1 ? argv[1] : ASSET_FILEPATH(elephant.obj);
+	std::string filepath = argc > 1 ? argv[1] : ASSET_FILEPATH(cube.obj);
 	while (!mesh.init(filepath))
 	{
 		std::cerr << "Unable to load mesh at filepath: " << filepath << std::endl;
@@ -145,12 +147,10 @@ void LaplacianDeformationTool::run(int argc, char* argv[])
 			}
 			ImGui::EndChild();
 
-			ImGui::BeginChild("Transform", ImVec2(0, 100), true);
+			ImGui::BeginChild("Transform", ImVec2(0, 125), true);
 			if (ImGui::CollapsingHeader("Transform Control Set", ImGuiTreeNodeFlags_DefaultOpen))
 			{
-				ImGui::Separator();
 				ImGui::Text("Gizmo Type");
-
 				if (ImGui::BeginTabBar("Gizmo Type"))
 				{
 					if (manually_set_gizmo_operation)
@@ -183,6 +183,8 @@ void LaplacianDeformationTool::run(int argc, char* argv[])
 					}
 					ImGui::EndTabBar();
 				}
+				if (ImGui::Button("Reset"))
+					reset_gizmo_transform();
 			}
 			ImGui::EndChild();
 
@@ -191,6 +193,8 @@ void LaplacianDeformationTool::run(int argc, char* argv[])
 			{
 				if (auto_deform.enabled)
 				{
+					update_gizmo_transform();
+					deform();
 					auto_deform.call_deform = false;
 					auto_deform.last_time_since_deform = 0.0;
 				}
@@ -229,7 +233,7 @@ void LaplacianDeformationTool::run(int argc, char* argv[])
 		{
 			auto_deform.call_deform = false;
 			auto_deform.last_time_since_deform = 0.0;
-			deform(); // TODO fix auto-deform
+			deform();
 		}
 		return false;
 		};
@@ -289,6 +293,9 @@ void LaplacianDeformationTool::run(int argc, char* argv[])
 					deform();
 					return true;
 				}
+			case GLFW_KEY_R:
+				reset_gizmo_transform();
+				return true;
 			}
 			return false;
 		};
@@ -300,6 +307,7 @@ Usage:
   ALT+1    Gizmo select TRANSLATE
   ALT+2    Gizmo select ROTATE
   ALT+3    Gizmo select SCALE
+  R        Reset gizmo
   E        Execute deform (if auto-deform is off)
 )";
 
@@ -321,12 +329,12 @@ void LaplacianDeformationTool::update_selection()
 
 void LaplacianDeformationTool::deform()
 {
-	if (auto_deform.gizmo_transform != Eigen::Matrix4f::Identity())
+	if (auto_deform.delta_gizmo_transform != Eigen::Matrix4f::Identity())
 	{
 		Eigen::MatrixXd anchors = selection_sets.filter_anchor_vertices(mesh.get_vertices());
 		Eigen::MatrixXd controls = selection_sets.filter_control_vertices(mesh.get_vertices());
 		Eigen::RowVectorXd mean_control_point = controls.colwise().mean();
-		Eigen::Matrix4d transform = auto_deform.gizmo_transform.cast<double>();
+		Eigen::Matrix4d transform = auto_deform.delta_gizmo_transform.cast<double>();
 		for (Eigen::Index i = 0; i < controls.rows(); ++i)
 		{
 			Eigen::VectorXd point3d = (controls.row(i) - mean_control_point).transpose();
@@ -367,5 +375,16 @@ void LaplacianDeformationTool::set_selection_state(SelectionSetManager::State st
 
 void LaplacianDeformationTool::update_gizmo_transform()
 {
-	auto_deform.gizmo_transform = gizmo_widget.T * auto_deform.gizmo_transform.inverse();
+	auto_deform.delta_gizmo_transform = gizmo_widget.T * auto_deform.last_gizmo_transform.inverse();
+	auto_deform.last_gizmo_transform = gizmo_widget.T;
+}
+
+void LaplacianDeformationTool::reset_gizmo_transform()
+{
+	gizmo_widget.T = Eigen::Matrix4f::Identity();
+	if (auto_deform.enabled)
+	{
+		update_gizmo_transform();
+		deform();
+	}
 }
