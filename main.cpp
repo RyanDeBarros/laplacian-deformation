@@ -172,9 +172,10 @@ void LaplacianDeformationTool::launch()
 	viewer.launch(false, "Laplacian Deformation Tool", 1920, 1080); // TODO change window size
 }
 
+// TODO set point_size/colors. gizmo should only appear when control points are selected, and is always reset to the mean position of the control points whenever that set is updated, and after deform().
 void LaplacianDeformationTool::render_gui()
 {
-	ImGui::SetNextWindowSize(ImVec2(400, 450), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(430, 450), ImGuiCond_FirstUseEver);
 	ImGui::Begin("Laplacian Deformation", nullptr, ImGuiWindowFlags_NoSavedSettings);
 
 	ImGui::BeginChild("Selection", ImVec2(0, 125), true);
@@ -266,6 +267,7 @@ void LaplacianDeformationTool::render_gui()
 		sync_auto_deform_enabled();
 	if (auto_deform.enabled)
 	{
+		ImGui::SetNextItemWidth(200);
 		ImGui::InputDouble("Rate (sec/update)", &auto_deform.deform_rate);
 	}
 	else
@@ -415,7 +417,7 @@ void LaplacianDeformationTool::update_gizmo_transform()
 void LaplacianDeformationTool::reset_gizmo_transform()
 {
 	gizmo_widget.T = Eigen::Matrix4f::Identity();
-	if (auto_deform.enabled) // TODO rotation and scale don't get properly reset
+	if (auto_deform.enabled) // TODO rotation and scale don't get properly reset. maybe don't allow rotations/scales, or always make them relative to mean control point?
 	{
 		update_gizmo_transform();
 		deform();
