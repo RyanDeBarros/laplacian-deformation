@@ -1,12 +1,13 @@
 #include "MeshData.h"
 
 #include <igl/read_triangle_mesh.h>
+#include <igl/write_triangle_mesh.h>
 #include <igl/cotmatrix.h>
 #include <igl/adjacency_list.h>
 
-bool MeshData::init(const std::string& mesh_filepath)
+bool MeshData::load(const std::string& filename)
 {
-	if (igl::read_triangle_mesh(mesh_filepath, vertices, faces))
+	if (igl::read_triangle_mesh(filename, vertices, faces))
 	{
 		tree.init(vertices, faces);
 		igl::cotmatrix(vertices, faces, laplacian);
@@ -15,6 +16,11 @@ bool MeshData::init(const std::string& mesh_filepath)
 		return true;
 	}
 	return false;
+}
+
+bool MeshData::save(const std::string& filename)
+{
+	return igl::write_triangle_mesh(filename, vertices, faces);
 }
 
 void MeshData::deform(const Eigen::MatrixXd& user_constraints, const Eigen::VectorXi& user_constraint_indices)

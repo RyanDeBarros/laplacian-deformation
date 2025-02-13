@@ -10,9 +10,6 @@
 #include "SelectionSetManager.h"
 #include "MeshData.h"
 
-#define PI 3.14159265358979323846
-#define ASSET_FILEPATH(file) ("../assets/"#file)
-
 bool is_shift_pressed()
 {
 	return glfwGetKey(__viewer->window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS
@@ -55,14 +52,16 @@ class LaplacianDeformationTool
 	} auto_deform;
 
 public:
-	void run(int argc, char* argv[]);
+	void run();
 
 private:
-	void init_mesh(int argc, char* argv[]);
+	void init_mesh(const std::string& filename);
 	void init_widgets();
 	void launch();
 	void render_gui();
 	bool key_callback(unsigned int key, int mod);
+	void open_mesh();
+	void save_mesh();
 	void update_selection_colors();
 	void deform();
 	void manual_deform();
@@ -73,15 +72,14 @@ private:
 	void reset_gizmo_orientation();
 };
 
-int main(int argc, char* argv[])
+int main()
 {
 	LaplacianDeformationTool tool;
-	tool.run(argc, argv);
+	tool.run();
 }
 
-void LaplacianDeformationTool::run(int argc, char* argv[])
+void LaplacianDeformationTool::run()
 {
-	init_mesh(argc, argv);
 	init_widgets();
 
 	selection_widget.callback_post_mode_change = [&](decltype(selection_widget.mode) mode) { if (mode != decltype(selection_widget.mode)::OFF) previous_on_mode = mode; };
@@ -141,22 +139,18 @@ Usage:
 	launch();
 }
 
-void LaplacianDeformationTool::init_mesh(int argc, char* argv[])
+void LaplacianDeformationTool::init_mesh(const std::string& filepath)
 {
-	std::string filepath = argc > 1 ? argv[1] : ASSET_FILEPATH(cube.obj);
-	while (!mesh.init(filepath))
+	if (mesh.load(filepath))
 	{
-		std::cerr << "Unable to load mesh at filepath: " << filepath << std::endl;
-		std::cout << "Enter the filepath of the mesh you want to test on: " << std::endl;
-		if (!(std::cin >> filepath))
-		{
-			std::cin.clear();
-			std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-		}
+		selection_sets.init(mesh.get_vertices());
+		std::cout << "Number of vertices: " << mesh.get_vertices().rows() << std::endl;
+		std::cout << "Number of faces: " << mesh.get_faces().rows() << std::endl;
+		viewer.data().clear();
+		viewer.data().set_mesh(mesh.get_vertices(), mesh.get_faces());
+		viewer.data().set_points(mesh.get_vertices(), selection_sets.get_colors());
+		viewer.data().set_face_based(true);
 	}
-	selection_sets.init(mesh.get_vertices());
-	std::cout << "Number of vertices: " << mesh.get_vertices().rows() << std::endl;
-	std::cout << "Number of faces: " << mesh.get_faces().rows() << std::endl;
 }
 
 void LaplacianDeformationTool::init_widgets()
@@ -171,9 +165,7 @@ void LaplacianDeformationTool::init_widgets()
 
 void LaplacianDeformationTool::launch()
 {
-	viewer.data().set_mesh(mesh.get_vertices(), mesh.get_faces());
-	viewer.data().point_size = 10.0f;
-	viewer.data().set_face_based(true);
+	viewer.data().point_size = 8.0f;
 	update_selection_colors();
 	gizmo_widget.visible = false;
 	viewer.launch(false, "Laplacian Deformation Tool", 1920, 1080);
@@ -183,6 +175,12 @@ void LaplacianDeformationTool::render_gui()
 {
 	ImGui::SetNextWindowSize(ImVec2(450, 550), ImGuiCond_FirstUseEver);
 	ImGui::Begin("Laplacian Deformation", nullptr, ImGuiWindowFlags_NoSavedSettings);
+
+	if (ImGui::Button("Open Mesh"))
+		open_mesh();
+	ImGui::SameLine();
+	if (ImGui::Button("Save Mesh"))
+		save_mesh();
 
 	ImGui::BeginChild("Selection", ImVec2(0, 125), true);
 	ImGui::Text("Selection Set");
@@ -294,7 +292,7 @@ void LaplacianDeformationTool::render_gui()
 
 	if (ImGui::CollapsingHeader("Mesh settings"))
 	{
-		ImGui::SliderFloat("vertex point size", &viewer.data().point_size, 0.0f, 100.0f);
+		ImGui::SliderFloat("vertex point size", &viewer.data().point_size, 0.0f, 50.0f);
 		if (ImGui::CollapsingHeader("Vertex colors"))
 		{
 			bool color_update = false;
@@ -382,6 +380,16 @@ bool LaplacianDeformationTool::key_callback(unsigned int key, int mod)
 	return false;
 }
 
+void LaplacianDeformationTool::open_mesh()
+{
+	init_mesh(igl::file_dialog_open());
+}
+
+void LaplacianDeformationTool::save_mesh()
+{
+	mesh.save(igl::file_dialog_save());
+}
+
 void LaplacianDeformationTool::update_selection_colors()
 {
 	viewer.data().set_points(mesh.get_vertices(), selection_sets.get_colors());
@@ -417,7 +425,9 @@ void LaplacianDeformationTool::deform()
 void LaplacianDeformationTool::manual_deform()
 {
 	update_gizmo_transform();
+	std::cout << "beginning manual deform..." << std::endl;
 	deform();
+	std::cout << "...manual deform complete" << std::endl;
 	recenter_gizmo();
 }
 

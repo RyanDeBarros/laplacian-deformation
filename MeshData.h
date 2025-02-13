@@ -25,7 +25,8 @@ public:
 	const Eigen::MatrixXi& get_faces() const { return faces; }
 	const igl::AABB<Eigen::MatrixXd, 3>& get_tree() const { return tree; }
 
-	bool init(const std::string& mesh_filepath);
+	bool load(const std::string& filename);
+	bool save(const std::string& filename);
 	void deform(const Eigen::MatrixXd& user_constraints, const Eigen::VectorXi& user_constraint_indices);
 
 private:
