@@ -31,14 +31,10 @@ void MeshData::deform(const Eigen::MatrixXd& user_constraints, const Eigen::Vect
 	for (Eigen::Index i = 0; i < user_constraint_indices.rows(); ++i)
 		A.insert(i + laplacian.rows(), user_constraint_indices(i)) = 1.0;
 
-	Eigen::MatrixXd new_vertices(vertices.rows(), vertices.cols());
-	Eigen::SparseMatrix<double> Acombo = A.transpose() * A;
-	Eigen::MatrixXd Bcombo = A.transpose() * B;
-
 	// Minimize || A * new_vertices - B || ^ 2
-	// --> Solve Acombo * new_vertices = Bcombo
+	// --> Solve At * A * new_vertices = At * B
 	
 	Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> solver;
-	solver.compute(Acombo);
-	vertices = solver.solve(Bcombo);
+	solver.compute(A.transpose() * A);
+	vertices = solver.solve(A.transpose() * B);
 }
