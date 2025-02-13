@@ -17,4 +17,7 @@ public:
 
 	bool init(const std::string& mesh_filepath);
 	void deform(const Eigen::MatrixXd& user_constraints, const Eigen::VectorXi& user_constraint_indices);
+
+private:
+	std::vector<Eigen::Matrix3d> compute_rotations(const Eigen::MatrixXd& ldelta); // TODO use vector<matrix3d> data member instead of returning new one every time
 };

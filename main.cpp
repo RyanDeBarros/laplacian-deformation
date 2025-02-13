@@ -136,7 +136,7 @@ Usage:
 
 void LaplacianDeformationTool::init_mesh(int argc, char* argv[])
 {
-	std::string filepath = argc > 1 ? argv[1] : ASSET_FILEPATH(elephant.obj);
+	std::string filepath = argc > 1 ? argv[1] : ASSET_FILEPATH(cube.obj);
 	while (!mesh.init(filepath))
 	{
 		std::cerr << "Unable to load mesh at filepath: " << filepath << std::endl;
