@@ -14,6 +14,13 @@ class MeshData
 	Eigen::MatrixXd ldelta;
 
 public:
+	struct
+	{
+		int max_iterations = 2;
+		float convergence_threshold = 1e-5f;
+	} arap;
+	bool hard_constraints = true;
+
 	const Eigen::MatrixXd& get_vertices() const { return vertices; }
 	const Eigen::MatrixXi& get_faces() const { return faces; }
 	const igl::AABB<Eigen::MatrixXd, 3>& get_tree() const { return tree; }
@@ -23,5 +30,6 @@ public:
 
 private:
 	Eigen::MatrixXd solve_vertices(const Eigen::MatrixXd& user_constraints, const Eigen::VectorXi& user_constraint_indices);
+	Eigen::MatrixXd solve_vertices_hard_constraints(const Eigen::MatrixXd& user_constraints, const Eigen::VectorXi& user_constraint_indices);
 	void solve_rotations(const Eigen::MatrixXd& old_vertices);
 };

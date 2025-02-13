@@ -66,6 +66,7 @@ private:
 	bool key_callback(unsigned int key, int mod);
 	void update_selection();
 	void deform();
+	void manual_deform();
 	void set_selection_state(SelectionSetManager::State state);
 	void sync_auto_deform_enabled();
 	void update_gizmo_transform();
@@ -129,6 +130,7 @@ Usage:
   ALT+3    Gizmo select SCALE
   E        Execute deform (if auto-deform is off)
   A        Toggle auto-deform
+  H        Toggle hard constraints for deformation
   R        Reset gizmo
 )";
 	launch();
@@ -175,7 +177,7 @@ void LaplacianDeformationTool::launch()
 // TODO set point_size/colors. gizmo should only appear when control points are selected, and is always reset to the mean position of the control points whenever that set is updated, and after deform().
 void LaplacianDeformationTool::render_gui()
 {
-	ImGui::SetNextWindowSize(ImVec2(430, 450), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(430, 480), ImGuiCond_FirstUseEver);
 	ImGui::Begin("Laplacian Deformation", nullptr, ImGuiWindowFlags_NoSavedSettings);
 
 	ImGui::BeginChild("Selection", ImVec2(0, 125), true);
@@ -262,7 +264,8 @@ void LaplacianDeformationTool::render_gui()
 	}
 	ImGui::EndChild();
 
-	ImGui::BeginChild("Deform", ImVec2(0, 70), true);
+	ImGui::BeginChild("Deform", ImVec2(0, 100), true);
+	ImGui::Checkbox("Hard constraints", &mesh.hard_constraints);
 	if (ImGui::Checkbox("Auto-deform", &auto_deform.enabled))
 		sync_auto_deform_enabled();
 	if (auto_deform.enabled)
@@ -273,12 +276,17 @@ void LaplacianDeformationTool::render_gui()
 	else
 	{
 		if (ImGui::Button("Execute"))
-		{
-			update_gizmo_transform();
-			deform();
-		}
+			manual_deform();
 	}
 	ImGui::EndChild();
+
+	if (ImGui::CollapsingHeader("ARAP parameters"))
+	{
+		ImGui::SetNextItemWidth(200);
+		ImGui::SliderInt("max iterations", &mesh.arap.max_iterations, 0, 20);
+		ImGui::SetNextItemWidth(200);
+		ImGui::InputFloat("convergence threshold", &mesh.arap.convergence_threshold, 0.0f, 0.0f, "%.7f");
+	}
 
 	ImGui::End();
 }
@@ -324,10 +332,9 @@ bool LaplacianDeformationTool::key_callback(unsigned int key, int mod)
 		}
 		return true;
 	case GLFW_KEY_E:
-		if (!auto_deform.enabled)
+		if (mod & GLFW_MOD_SHIFT && !auto_deform.enabled)
 		{
-			update_gizmo_transform();
-			deform();
+			manual_deform();
 			return true;
 		}
 		return false;
@@ -336,7 +343,16 @@ bool LaplacianDeformationTool::key_callback(unsigned int key, int mod)
 		{
 			auto_deform.enabled = !auto_deform.enabled;
 			sync_auto_deform_enabled();
+			return true;
 		}
+		return false;
+	case GLFW_KEY_H:
+		if (mod & GLFW_MOD_SHIFT)
+		{
+			mesh.hard_constraints = !mesh.hard_constraints;
+			return true;
+		}
+		return false;
 	case GLFW_KEY_R:
 		reset_gizmo_transform();
 		return true;
@@ -380,6 +396,12 @@ void LaplacianDeformationTool::deform()
 	}
 }
 
+void LaplacianDeformationTool::manual_deform()
+{
+	update_gizmo_transform();
+	deform();
+}
+
 void LaplacianDeformationTool::set_selection_state(SelectionSetManager::State state)
 {
 	if (selection_sets.state != state)
@@ -401,8 +423,7 @@ void LaplacianDeformationTool::sync_auto_deform_enabled()
 {
 	if (auto_deform.enabled)
 	{
-		update_gizmo_transform();
-		deform();
+		manual_deform();
 		auto_deform.call_deform = false;
 		auto_deform.last_time_since_deform = 0.0;
 	}
@@ -418,8 +439,5 @@ void LaplacianDeformationTool::reset_gizmo_transform()
 {
 	gizmo_widget.T = Eigen::Matrix4f::Identity();
 	if (auto_deform.enabled) // TODO rotation and scale don't get properly reset. maybe don't allow rotations/scales, or always make them relative to mean control point?
-	{
-		update_gizmo_transform();
-		deform();
-	}
+		manual_deform();
 }

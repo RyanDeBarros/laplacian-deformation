@@ -24,15 +24,19 @@ void MeshData::deform(const Eigen::MatrixXd& user_constraints, const Eigen::Vect
 
 	std::fill(rotations.begin(), rotations.end(), Eigen::Matrix3d::Identity());
 	ldelta = laplacian * vertices;
-	int arap_max_iterations = 2; // TODO GUI slider
-	double arap_convergence_threshold = 1e-5; // TODO GUI slider
-	Eigen::MatrixXd old_vertices = solve_vertices(user_constraints, user_constraint_indices);
-	for (int i = 0; i < arap_max_iterations; ++i)
+	Eigen::MatrixXd(MeshData::*solver)(const Eigen::MatrixXd&, const Eigen::VectorXi&);
+	if (hard_constraints)
+		solver = &MeshData::solve_vertices_hard_constraints;
+	else
+		solver = &MeshData::solve_vertices;
+
+	Eigen::MatrixXd old_vertices = (this->*solver)(user_constraints, user_constraint_indices);
+	for (int i = 0; i < arap.max_iterations; ++i) // TODO deformation glitches out if max_iterations is not an even number
 	{
-		if ((vertices - old_vertices).norm() < std::abs(arap_convergence_threshold))
+		if ((vertices - old_vertices).norm() < std::abs(arap.convergence_threshold))
 			break;
 		solve_rotations(old_vertices);
-		old_vertices = solve_vertices(user_constraints, user_constraint_indices);
+		old_vertices = (this->*solver)(user_constraints, user_constraint_indices);
 	}
 }
 
@@ -52,6 +56,39 @@ Eigen::MatrixXd MeshData::solve_vertices(const Eigen::MatrixXd& user_constraints
 			A.insert(iter.row(), iter.col()) = iter.value();
 	for (Eigen::Index i = 0; i < user_constraint_indices.rows(); ++i)
 		A.insert(i + laplacian.rows(), user_constraint_indices(i)) = 1.0;
+
+	// Minimize || A * new_vertices - B || ^ 2
+	// --> Solve At * A * new_vertices = At * B
+
+	Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> solver;
+	solver.compute(A.transpose() * A);
+	vertices = solver.solve(A.transpose() * B);
+	return old_vertices;
+}
+
+Eigen::MatrixXd MeshData::solve_vertices_hard_constraints(const Eigen::MatrixXd& user_constraints, const Eigen::VectorXi& user_constraint_indices)
+{
+	Eigen::MatrixXd old_vertices = vertices;
+
+	for (Eigen::Index i = 0; i < ldelta.rows(); ++i)
+		ldelta.row(i) = (rotations[i] * ldelta.row(i).transpose()).transpose();
+	Eigen::MatrixXd B(ldelta.rows(), ldelta.cols());
+	B << ldelta;
+
+	Eigen::SparseMatrix<double> A(laplacian.rows(), laplacian.cols());
+	A.reserve(laplacian.nonZeros());
+	for (Eigen::Index i = 0; i < laplacian.outerSize(); ++i)
+		for (decltype(laplacian)::InnerIterator iter(laplacian, i); iter; ++iter)
+			A.insert(iter.row(), iter.col()) = iter.value();
+	
+	
+	for (Eigen::Index i = 0; i < user_constraint_indices.rows(); ++i)
+	{
+		Eigen::Index v = user_constraint_indices(i);
+		A.prune([v](decltype(A)::Index row, decltype(A)::Index col, decltype(A)::Scalar value) { return row != v; });
+		A.insert(v, v) = 1.0;
+		B.row(v) = user_constraints.row(i);
+	}
 
 	// Minimize || A * new_vertices - B || ^ 2
 	// --> Solve At * A * new_vertices = At * B
