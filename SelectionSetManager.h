@@ -17,6 +17,7 @@ public:
 
 	void init(const Eigen::MatrixXd& V);
 	Eigen::MatrixXd get_colors() const;
+	bool exists_controls() const;
 	Eigen::MatrixXd filter_anchor_vertices(const Eigen::MatrixXd& vertices) const;
 	Eigen::MatrixXd filter_control_vertices(const Eigen::MatrixXd& vertices) const;
 	Eigen::MatrixXd filter_vertices(const Eigen::MatrixXd& vertices, State state) const;

@@ -29,7 +29,7 @@ Eigen::RowVector3f vertex_colors::neutral = Eigen::RowVector3f(0.5f, 0.5f, 0.5f)
 Eigen::RowVector3f vertex_colors::anchor = Eigen::RowVector3f(0.9f, 0.3f, 0.3f);
 Eigen::RowVector3f vertex_colors::control = Eigen::RowVector3f(0.3f, 0.9f, 0.3f);
 
-struct LaplacianDeformationTool
+class LaplacianDeformationTool
 {
 	igl::opengl::glfw::Viewer viewer;
 	igl::opengl::glfw::imgui::ImGuiPlugin imgui_plugin;
@@ -37,12 +37,10 @@ struct LaplacianDeformationTool
 	igl::opengl::glfw::imgui::ImGuizmoWidget gizmo_widget;
 	igl::opengl::glfw::imgui::SelectionWidget selection_widget;
 
-private:
-	decltype(selection_widget.mode) previous_on_mode;
+	decltype(selection_widget.mode) previous_on_mode = decltype(selection_widget.mode)::OFF;
 	bool manually_set_gizmo_operation = false;
 	bool manually_set_selection_state = false;
 
-public:
 	MeshData mesh;
 	SelectionSetManager selection_sets;
 
@@ -56,6 +54,7 @@ public:
 		Eigen::Matrix4f last_gizmo_transform = Eigen::Matrix4f::Identity();
 	} auto_deform;
 
+public:
 	void run(int argc, char* argv[]);
 
 private:
@@ -70,7 +69,8 @@ private:
 	void set_selection_state(SelectionSetManager::State state);
 	void sync_auto_deform_enabled();
 	void update_gizmo_transform();
-	void reset_gizmo_transform();
+	void recenter_gizmo();
+	void reset_gizmo_orientation();
 };
 
 int main(int argc, char* argv[])
@@ -99,7 +99,7 @@ void LaplacianDeformationTool::run(int argc, char* argv[])
 			}
 		}
 		};
-	viewer.callback_pre_draw = [&](decltype(viewer)& viewer) {
+	viewer.callback_pre_draw = [&](decltype(viewer)&) {
 		if (auto_deform.enabled && auto_deform.call_deform)
 		{
 			auto_deform.call_deform = false;
@@ -108,14 +108,20 @@ void LaplacianDeformationTool::run(int argc, char* argv[])
 		}
 		return false;
 		};
+	viewer.callback_mouse_up = [&](decltype(viewer)&, int button, int) {
+		if (auto_deform.enabled && button == GLFW_MOUSE_BUTTON_LEFT && ImGuizmo::IsUsing())
+			manual_deform(); // last deform
+		return false;
+		};
 	selection_widget.callback = [&]()
 		{
 			selection_sets.selection_callback([&](Eigen::VectorXd& set, Eigen::Array<double, Eigen::Dynamic, 1>& and_visible) {
 					screen_space_selection(mesh.get_vertices(), mesh.get_faces(), mesh.get_tree(),
 						viewer.core().view, viewer.core().proj, viewer.core().viewport, selection_widget.L, set, and_visible); });
 			update_selection_colors();
+			if (selection_sets.state == decltype(selection_sets.state)::CONTROL)
+				recenter_gizmo();
 		};
-
 	viewer.callback_key_pressed = [&](decltype(viewer)&, unsigned int key, int mod)
 		{
 			return key_callback(key, mod);
@@ -131,7 +137,6 @@ Usage:
   E        Execute deform (if auto-deform is off)
   A        Toggle auto-deform
   H        Toggle hard constraints for deformation
-  R        Reset gizmo
 )";
 	launch();
 }
@@ -169,15 +174,14 @@ void LaplacianDeformationTool::launch()
 	viewer.data().set_mesh(mesh.get_vertices(), mesh.get_faces());
 	viewer.data().point_size = 10.0f;
 	viewer.data().set_face_based(true);
-	viewer.data().show_lines = mesh.get_faces().rows() < 20000;
 	update_selection_colors();
+	gizmo_widget.visible = false;
 	viewer.launch(false, "Laplacian Deformation Tool", 1920, 1080);
 }
 
-// TODO gizmo should only appear when control points are selected, and is always reset to the mean position of the control points whenever that set is updated, and after deform().
 void LaplacianDeformationTool::render_gui()
 {
-	ImGui::SetNextWindowSize(ImVec2(430, 550), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(450, 550), ImGuiCond_FirstUseEver);
 	ImGui::Begin("Laplacian Deformation", nullptr, ImGuiWindowFlags_NoSavedSettings);
 
 	ImGui::BeginChild("Selection", ImVec2(0, 125), true);
@@ -214,54 +218,54 @@ void LaplacianDeformationTool::render_gui()
 		}
 		ImGui::EndTabBar();
 	}
-	if (ImGui::Checkbox("Select only visible", &selection_sets.only_visible))
-		update_selection_colors();
+	ImGui::Checkbox("Select only visible", &selection_sets.only_visible);
 	if (ImGui::Button("Deselect"))
 	{
 		selection_sets.deselect();
 		update_selection_colors();
+		if (selection_sets.state == decltype(selection_sets.state)::CONTROL)
+			recenter_gizmo();
 	}
 	ImGui::EndChild();
 
-	ImGui::BeginChild("Transform", ImVec2(0, 125), true);
-	if (ImGui::CollapsingHeader("Transform Control Set", ImGuiTreeNodeFlags_DefaultOpen))
+	ImGui::BeginChild("Transform", ImVec2(0, 100), true);
+	ImGui::Text("Gizmo Type");
+	if (ImGui::BeginTabBar("Gizmo Type"))
 	{
-		ImGui::Text("Gizmo Type");
-		if (ImGui::BeginTabBar("Gizmo Type"))
+		if (manually_set_gizmo_operation)
 		{
-			if (manually_set_gizmo_operation)
-			{
-				manually_set_gizmo_operation = false;
-				if (ImGui::BeginTabItem("TRANSLATE", nullptr, gizmo_widget.operation == ImGuizmo::OPERATION::TRANSLATE ? ImGuiTabItemFlags_SetSelected : 0))
-					ImGui::EndTabItem();
-				if (ImGui::BeginTabItem("ROTATE", nullptr, gizmo_widget.operation == ImGuizmo::OPERATION::ROTATE ? ImGuiTabItemFlags_SetSelected : 0))
-					ImGui::EndTabItem();
-				if (ImGui::BeginTabItem("SCALE", nullptr, gizmo_widget.operation == ImGuizmo::OPERATION::SCALE ? ImGuiTabItemFlags_SetSelected : 0))
-					ImGui::EndTabItem();
-			}
-			else
-			{
-				if (ImGui::BeginTabItem("TRANSLATE"))
-				{
-					gizmo_widget.operation = ImGuizmo::OPERATION::TRANSLATE;
-					ImGui::EndTabItem();
-				}
-				if (ImGui::BeginTabItem("ROTATE"))
-				{
-					gizmo_widget.operation = ImGuizmo::OPERATION::ROTATE;
-					ImGui::EndTabItem();
-				}
-				if (ImGui::BeginTabItem("SCALE"))
-				{
-					gizmo_widget.operation = ImGuizmo::OPERATION::SCALE;
-					ImGui::EndTabItem();
-				}
-			}
-			ImGui::EndTabBar();
+			manually_set_gizmo_operation = false;
+			if (ImGui::BeginTabItem("TRANSLATE", nullptr, gizmo_widget.operation == ImGuizmo::OPERATION::TRANSLATE ? ImGuiTabItemFlags_SetSelected : 0))
+				ImGui::EndTabItem();
+			if (ImGui::BeginTabItem("ROTATE", nullptr, gizmo_widget.operation == ImGuizmo::OPERATION::ROTATE ? ImGuiTabItemFlags_SetSelected : 0))
+				ImGui::EndTabItem();
+			if (ImGui::BeginTabItem("SCALE", nullptr, gizmo_widget.operation == ImGuizmo::OPERATION::SCALE ? ImGuiTabItemFlags_SetSelected : 0))
+				ImGui::EndTabItem();
 		}
-		if (ImGui::Button("Reset"))
-			reset_gizmo_transform();
+		else
+		{
+			if (ImGui::BeginTabItem("TRANSLATE"))
+			{
+				gizmo_widget.operation = ImGuizmo::OPERATION::TRANSLATE;
+				ImGui::EndTabItem();
+			}
+			if (ImGui::BeginTabItem("ROTATE"))
+			{
+				gizmo_widget.operation = ImGuizmo::OPERATION::ROTATE;
+				ImGui::EndTabItem();
+			}
+			if (ImGui::BeginTabItem("SCALE"))
+			{
+				gizmo_widget.operation = ImGuizmo::OPERATION::SCALE;
+				ImGui::EndTabItem();
+			}
+		}
+		ImGui::EndTabBar();
 	}
+	ImGui::BeginDisabled(gizmo_widget.T.block(0, 0, 3, 3).isIdentity());
+	if (ImGui::Button("Reset Gizmo Orientation"))
+		reset_gizmo_orientation();
+	ImGui::EndDisabled();
 	ImGui::EndChild();
 
 	ImGui::BeginChild("Deform", ImVec2(0, 100), true);
@@ -270,8 +274,8 @@ void LaplacianDeformationTool::render_gui()
 		sync_auto_deform_enabled();
 	if (auto_deform.enabled)
 	{
-		ImGui::SetNextItemWidth(200);
-		ImGui::InputDouble("Rate (sec/update)", &auto_deform.deform_rate);
+		ImGui::SetNextItemWidth(150);
+		ImGui::InputDouble("auto-deform rate (sec/update)", &auto_deform.deform_rate);
 	}
 	else
 	{
@@ -368,8 +372,12 @@ bool LaplacianDeformationTool::key_callback(unsigned int key, int mod)
 		}
 		return false;
 	case GLFW_KEY_R:
-		reset_gizmo_transform();
-		return true;
+		if (mod & GLFW_MOD_SHIFT && !gizmo_widget.T.block(0, 0, 3, 3).isIdentity())
+		{
+			reset_gizmo_orientation();
+			return true;
+		}
+		return false;
 	}
 	return false;
 }
@@ -410,6 +418,7 @@ void LaplacianDeformationTool::manual_deform()
 {
 	update_gizmo_transform();
 	deform();
+	recenter_gizmo();
 }
 
 void LaplacianDeformationTool::set_selection_state(SelectionSetManager::State state)
@@ -445,9 +454,24 @@ void LaplacianDeformationTool::update_gizmo_transform()
 	auto_deform.last_gizmo_transform = gizmo_widget.T;
 }
 
-void LaplacianDeformationTool::reset_gizmo_transform()
+void LaplacianDeformationTool::recenter_gizmo()
 {
-	gizmo_widget.T = Eigen::Matrix4f::Identity();
-	if (auto_deform.enabled) // TODO rotation and scale don't get properly reset. maybe don't allow rotations/scales, or always make them relative to mean control point?
+	if (selection_sets.exists_controls())
+	{
+		Eigen::MatrixXd controls = selection_sets.filter_control_vertices(mesh.get_vertices());
+		Eigen::Vector3f mean_control = controls.colwise().mean().cast<float>().transpose();
+		Eigen::Vector3f position(gizmo_widget.T(0, 3), gizmo_widget.T(1, 3), gizmo_widget.T(2, 3));
+		gizmo_widget.T.block(0, 3, 3, 1) = mean_control;
+		auto_deform.last_gizmo_transform.block(0, 3, 3, 1) += (mean_control - position);
+		gizmo_widget.visible = true;
+	}
+	else
+		gizmo_widget.visible = false;
+}
+
+void LaplacianDeformationTool::reset_gizmo_orientation()
+{
+	gizmo_widget.T.block(0, 0, 3, 3) = Eigen::Matrix3f::Identity();
+	if (auto_deform.enabled)
 		manual_deform();
 }

@@ -22,6 +22,16 @@ Eigen::MatrixXd SelectionSetManager::get_colors() const
 	return colors;
 }
 
+bool SelectionSetManager::exists_controls() const
+{
+	for (Eigen::Index i = 0; i < selection.rows(); ++i)
+	{
+		if (round(selection(i)) == (int)State::CONTROL)
+			return true;
+	}
+	return false;
+}
+
 Eigen::MatrixXd SelectionSetManager::filter_anchor_vertices(const Eigen::MatrixXd& vertices) const
 {
 	return filter_vertices(vertices, State::ANCHOR);
