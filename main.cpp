@@ -25,9 +25,9 @@ bool is_ctrl_pressed()
 		|| glfwGetKey(__viewer->window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
 }
 
-Eigen::RowVector3d vertex_colors::neutral = Eigen::RowVector3d(0.5, 0.5, 0.5);
-Eigen::RowVector3d vertex_colors::anchor = Eigen::RowVector3d(0.9, 0.3, 0.3);
-Eigen::RowVector3d vertex_colors::control = Eigen::RowVector3d(0.3, 0.9, 0.3);
+Eigen::RowVector3f vertex_colors::neutral = Eigen::RowVector3f(0.5f, 0.5f, 0.5f);
+Eigen::RowVector3f vertex_colors::anchor = Eigen::RowVector3f(0.9f, 0.3f, 0.3f);
+Eigen::RowVector3f vertex_colors::control = Eigen::RowVector3f(0.3f, 0.9f, 0.3f);
 
 struct LaplacianDeformationTool
 {
@@ -64,7 +64,7 @@ private:
 	void launch();
 	void render_gui();
 	bool key_callback(unsigned int key, int mod);
-	void update_selection();
+	void update_selection_colors();
 	void deform();
 	void manual_deform();
 	void set_selection_state(SelectionSetManager::State state);
@@ -113,7 +113,7 @@ void LaplacianDeformationTool::run(int argc, char* argv[])
 			selection_sets.selection_callback([&](Eigen::VectorXd& set, Eigen::Array<double, Eigen::Dynamic, 1>& and_visible) {
 					screen_space_selection(mesh.get_vertices(), mesh.get_faces(), mesh.get_tree(),
 						viewer.core().view, viewer.core().proj, viewer.core().viewport, selection_widget.L, set, and_visible); });
-			update_selection();
+			update_selection_colors();
 		};
 
 	viewer.callback_key_pressed = [&](decltype(viewer)&, unsigned int key, int mod)
@@ -170,14 +170,14 @@ void LaplacianDeformationTool::launch()
 	viewer.data().point_size = 10.0f;
 	viewer.data().set_face_based(true);
 	viewer.data().show_lines = mesh.get_faces().rows() < 20000;
-	update_selection();
-	viewer.launch(false, "Laplacian Deformation Tool", 1920, 1080); // TODO change window size
+	update_selection_colors();
+	viewer.launch(false, "Laplacian Deformation Tool", 1920, 1080);
 }
 
-// TODO set point_size/colors. gizmo should only appear when control points are selected, and is always reset to the mean position of the control points whenever that set is updated, and after deform().
+// TODO gizmo should only appear when control points are selected, and is always reset to the mean position of the control points whenever that set is updated, and after deform().
 void LaplacianDeformationTool::render_gui()
 {
-	ImGui::SetNextWindowSize(ImVec2(430, 480), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(430, 550), ImGuiCond_FirstUseEver);
 	ImGui::Begin("Laplacian Deformation", nullptr, ImGuiWindowFlags_NoSavedSettings);
 
 	ImGui::BeginChild("Selection", ImVec2(0, 125), true);
@@ -215,11 +215,11 @@ void LaplacianDeformationTool::render_gui()
 		ImGui::EndTabBar();
 	}
 	if (ImGui::Checkbox("Select only visible", &selection_sets.only_visible))
-		update_selection();
+		update_selection_colors();
 	if (ImGui::Button("Deselect"))
 	{
 		selection_sets.deselect();
-		update_selection();
+		update_selection_colors();
 	}
 	ImGui::EndChild();
 
@@ -286,6 +286,20 @@ void LaplacianDeformationTool::render_gui()
 		ImGui::SliderInt("max iterations", &mesh.arap.max_iterations, 0, 20);
 		ImGui::SetNextItemWidth(200);
 		ImGui::InputFloat("convergence threshold", &mesh.arap.convergence_threshold, 0.0f, 0.0f, "%.7f");
+	}
+
+	if (ImGui::CollapsingHeader("Mesh settings"))
+	{
+		ImGui::SliderFloat("vertex point size", &viewer.data().point_size, 0.0f, 100.0f);
+		if (ImGui::CollapsingHeader("Vertex colors"))
+		{
+			bool color_update = false;
+			color_update |= ImGui::ColorPicker3("neutral color", vertex_colors::neutral.data());
+			color_update |= ImGui::ColorPicker3("anchor color", vertex_colors::anchor.data());
+			color_update |= ImGui::ColorPicker3("control color", vertex_colors::control.data());
+			if (color_update)
+				update_selection_colors();
+		}
 	}
 
 	ImGui::End();
@@ -360,11 +374,9 @@ bool LaplacianDeformationTool::key_callback(unsigned int key, int mod)
 	return false;
 }
 
-void LaplacianDeformationTool::update_selection()
+void LaplacianDeformationTool::update_selection_colors()
 {
-	const bool was_face_based = viewer.data().face_based;
 	viewer.data().set_points(mesh.get_vertices(), selection_sets.get_colors());
-	viewer.data().face_based = was_face_based;
 }
 
 void LaplacianDeformationTool::deform()
@@ -389,10 +401,8 @@ void LaplacianDeformationTool::deform()
 		user_constraint_indices << selection_sets.anchor_indices(), selection_sets.control_indices();
 
 		mesh.deform(user_constraints, user_constraint_indices);
-		const bool was_face_based = viewer.data().face_based;
 		viewer.data().set_mesh(mesh.get_vertices(), mesh.get_faces());
 		viewer.data().set_points(mesh.get_vertices(), selection_sets.get_colors());
-		viewer.data().face_based = was_face_based;
 	}
 }
 

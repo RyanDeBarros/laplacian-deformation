@@ -8,7 +8,7 @@ extern bool is_ctrl_pressed();
 
 namespace vertex_colors
 {
-	extern Eigen::RowVector3d neutral;
-	extern Eigen::RowVector3d anchor;
-	extern Eigen::RowVector3d control;
+	extern Eigen::RowVector3f neutral;
+	extern Eigen::RowVector3f anchor;
+	extern Eigen::RowVector3f control;
 }

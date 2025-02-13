@@ -13,11 +13,11 @@ Eigen::MatrixXd SelectionSetManager::get_colors() const
 	for (Eigen::Index i = 0; i < colors.rows(); ++i)
 	{
 		if (round(selection(i)) == (int)State::ANCHOR)
-			colors.row(i) = vertex_colors::anchor;
+			colors.row(i) = vertex_colors::anchor.cast<double>();
 		else if (round(selection(i)) == (int)State::CONTROL)
-			colors.row(i) = vertex_colors::control;
+			colors.row(i) = vertex_colors::control.cast<double>();
 		else
-			colors.row(i) = vertex_colors::neutral;
+			colors.row(i) = vertex_colors::neutral.cast<double>();
 	}
 	return colors;
 }
