@@ -53,9 +53,9 @@ class LaplacianDeformationTool
 
 public:
 	void run();
+	void init_mesh(const std::string& filename);
 
 private:
-	void init_mesh(const std::string& filename);
 	void init_widgets();
 	void launch();
 	void render_gui();
@@ -76,6 +76,15 @@ int main()
 {
 	LaplacianDeformationTool tool;
 	tool.run();
+}
+
+static void path_drop_callback(GLFWwindow* window, int count, const char** paths)
+{
+	if (count > 0)
+	{
+		auto tool = (LaplacianDeformationTool*)glfwGetWindowUserPointer(window);
+		tool->init_mesh(paths[0]);
+	}
 }
 
 void LaplacianDeformationTool::run()
@@ -123,6 +132,11 @@ void LaplacianDeformationTool::run()
 	viewer.callback_key_pressed = [&](decltype(viewer)&, unsigned int key, int mod)
 		{
 			return key_callback(key, mod);
+		};
+	viewer.callback_init = [this](decltype(viewer)& viewer) {
+		glfwSetWindowUserPointer(viewer.window, this);
+		glfwSetDropCallback(viewer.window, &path_drop_callback);
+		return false;
 		};
 	std::cout << R"(
 Usage:

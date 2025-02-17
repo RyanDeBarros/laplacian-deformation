@@ -1,6 +1,5 @@
 #pragma once
 
-//#include <igl/screen_space_selection.h>
 #include <Eigen/Core>
 
 extern bool is_shift_pressed();
