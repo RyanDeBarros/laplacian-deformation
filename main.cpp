@@ -126,8 +126,7 @@ void LaplacianDeformationTool::run()
 					screen_space_selection(mesh.get_vertices(), mesh.get_faces(), mesh.get_tree(),
 						viewer.core().view, viewer.core().proj, viewer.core().viewport, selection_widget.L, set, and_visible); });
 			update_selection_colors();
-			if (selection_sets.state == decltype(selection_sets.state)::CONTROL)
-				recenter_gizmo();
+			recenter_gizmo();
 		};
 	viewer.callback_key_pressed = [&](decltype(viewer)&, unsigned int key, int mod)
 		{
@@ -164,6 +163,7 @@ void LaplacianDeformationTool::init_mesh(const std::string& filepath)
 		viewer.data().set_mesh(mesh.get_vertices(), mesh.get_faces());
 		viewer.data().set_points(mesh.get_vertices(), selection_sets.get_colors());
 		viewer.data().set_face_based(true);
+		gizmo_widget.visible = false;
 	}
 }
 
