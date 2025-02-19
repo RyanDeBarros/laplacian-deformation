@@ -46,7 +46,7 @@ class LaplacianDeformationTool
 		bool enabled = false;
 		bool call_deform = false;
 		double last_time_since_deform = 0.0;
-		double deform_rate = 1.0 / 10.0;
+		double deform_per_second = 5.0;
 		Eigen::Matrix4f delta_gizmo_transform = Eigen::Matrix4f::Identity();
 		Eigen::Matrix4f last_gizmo_transform = Eigen::Matrix4f::Identity();
 	} auto_deform;
@@ -98,7 +98,7 @@ void LaplacianDeformationTool::run()
 		if (auto_deform.enabled && !auto_deform.call_deform)
 		{
 			double time = glfwGetTime();
-			if (time - auto_deform.last_time_since_deform > auto_deform.deform_rate)
+			if ((time - auto_deform.last_time_since_deform) * auto_deform.deform_per_second > 1.0)
 			{
 				auto_deform.last_time_since_deform = time;
 				auto_deform.call_deform = true;
@@ -287,7 +287,8 @@ void LaplacianDeformationTool::render_gui()
 	if (auto_deform.enabled)
 	{
 		ImGui::SetNextItemWidth(150);
-		ImGui::InputDouble("auto-deform rate (sec/update)", &auto_deform.deform_rate);
+		if (ImGui::InputDouble("auto-deform rate (update/sec)", &auto_deform.deform_per_second))
+			auto_deform.deform_per_second = std::abs(auto_deform.deform_per_second);
 	}
 	else
 	{
@@ -301,7 +302,8 @@ void LaplacianDeformationTool::render_gui()
 		ImGui::SetNextItemWidth(200);
 		ImGui::SliderInt("max iterations", &mesh.arap.max_iterations, 0, 20);
 		ImGui::SetNextItemWidth(200);
-		ImGui::InputFloat("convergence threshold", &mesh.arap.convergence_threshold, 0.0f, 0.0f, "%.7f");
+		if (ImGui::InputFloat("convergence threshold", &mesh.arap.convergence_threshold))
+			mesh.arap.convergence_threshold = std::abs(mesh.arap.convergence_threshold);
 	}
 
 	if (ImGui::CollapsingHeader("Mesh settings"))

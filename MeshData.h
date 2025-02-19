@@ -17,7 +17,7 @@ public:
 	struct
 	{
 		int max_iterations = 2;
-		float convergence_threshold = 1e-5f;
+		float convergence_threshold = 1.0f;
 	} arap;
 	bool hard_constraints = true;
 

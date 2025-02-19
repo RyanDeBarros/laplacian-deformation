@@ -13,6 +13,7 @@ bool MeshData::load(const std::string& filename)
 		igl::cotmatrix(vertices, faces, laplacian);
 		igl::adjacency_list(faces, adjacency);
 		rotations.resize(vertices.rows());
+		arap.convergence_threshold = 0.001f * vertices.rows();
 		return true;
 	}
 	return false;
@@ -39,10 +40,10 @@ void MeshData::deform(const Eigen::MatrixXd& user_constraints, const Eigen::Vect
 	Eigen::MatrixXd old_vertices = (this->*solver)(user_constraints, user_constraint_indices);
 	for (int i = 0; i < arap.max_iterations; ++i)
 	{
-		if ((vertices - old_vertices).norm() < std::abs(arap.convergence_threshold))
-			break;
 		solve_rotations(old_vertices);
 		old_vertices = (this->*solver)(user_constraints, user_constraint_indices);
+		if ((vertices - old_vertices).norm() < std::abs(arap.convergence_threshold))
+			break;
 	}
 }
 
@@ -50,19 +51,24 @@ Eigen::MatrixXd MeshData::solve_vertices(const Eigen::MatrixXd& user_constraints
 {
 	Eigen::MatrixXd old_vertices = vertices;
 
+	// construct B
+
 	Eigen::MatrixXd B(ldelta.rows() + user_constraints.rows(), ldelta.cols());
 	for (Eigen::Index i = 0; i < ldelta.rows(); ++i)
 		B.row(i) = (rotations[i] * ldelta.row(i).transpose()).transpose();
 	B.bottomRows(user_constraints.rows()) = user_constraints;
 
+	// construct A
+	
+	std::vector<Eigen::Triplet<double>> triplets;
+	triplets.reserve(laplacian.nonZeros() + user_constraint_indices.rows());
 	Eigen::SparseMatrix<double> A(laplacian.rows() + user_constraint_indices.rows(), laplacian.cols());
-	A.reserve(laplacian.nonZeros());
 	for (Eigen::Index i = 0; i < laplacian.outerSize(); ++i)
 		for (decltype(laplacian)::InnerIterator iter(laplacian, i); iter; ++iter)
-			A.insert(iter.row(), iter.col()) = iter.value();
-
+			triplets.emplace_back(iter.row(), iter.col(), iter.value());
 	for (Eigen::Index i = 0; i < user_constraint_indices.rows(); ++i)
-		A.insert(i + laplacian.rows(), user_constraint_indices(i)) = 1.0;
+		triplets.emplace_back(i + laplacian.rows(), user_constraint_indices(i), 1.0);
+	A.setFromTriplets(triplets.begin(), triplets.end());
 
 	// Minimize || A * new_vertices - B || ^ 2
 	// --> Solve At * A * new_vertices = At * B
@@ -77,24 +83,39 @@ Eigen::MatrixXd MeshData::solve_vertices_hard_constraints(const Eigen::MatrixXd&
 {
 	Eigen::MatrixXd old_vertices = vertices;
 
-	Eigen::MatrixXd B(ldelta.rows(), ldelta.cols());
-	for (Eigen::Index i = 0; i < ldelta.rows(); ++i)
-		B.row(i) = (rotations[i] * ldelta.row(i).transpose()).transpose();
-	
-	Eigen::SparseMatrix<double> A(laplacian.rows(), laplacian.cols());
-	A.reserve(laplacian.nonZeros());
-	for (Eigen::Index i = 0; i < laplacian.outerSize(); ++i)
-		for (decltype(laplacian)::InnerIterator iter(laplacian, i); iter; ++iter)
-			A.insert(iter.row(), iter.col()) = iter.value();
-	
-	
+	std::vector<Eigen::Triplet<double>> triplets;
+	triplets.reserve(laplacian.nonZeros());
+	std::unordered_map<Eigen::Index, Eigen::Index> ui_row_map;
+
+	// process hard constraints
+
 	for (Eigen::Index i = 0; i < user_constraint_indices.rows(); ++i)
 	{
 		Eigen::Index v = user_constraint_indices(i);
-		A.prune([v](decltype(A)::Index row, decltype(A)::Index col, decltype(A)::Scalar value) { return row != v; });
-		A.insert(v, v) = 1.0;
-		B.row(v) = user_constraints.row(i);
+		ui_row_map[v] = i;
+		triplets.emplace_back(v, v, 1.0);
 	}
+
+	// construct B
+
+	Eigen::MatrixXd B(ldelta.rows(), ldelta.cols());
+	for (Eigen::Index i = 0; i < ldelta.rows(); ++i)
+	{
+		auto it = ui_row_map.find(i);
+		if (it != ui_row_map.end())
+			B.row(i) = user_constraints.row(it->second);
+		else
+			B.row(i) = (rotations[i] * ldelta.row(i).transpose()).transpose();
+	}
+
+	// construct A
+
+	decltype(laplacian) A(laplacian.rows(), laplacian.cols());
+	for (Eigen::Index i = 0; i < laplacian.outerSize(); ++i)
+		for (decltype(laplacian)::InnerIterator iter(laplacian, i); iter; ++iter)
+			if (!ui_row_map.count(iter.row()))
+				triplets.emplace_back(iter.row(), iter.col(), iter.value());
+	A.setFromTriplets(triplets.begin(), triplets.end());
 
 	// Minimize || A * new_vertices - B || ^ 2
 	// --> Solve At * A * new_vertices = At * B
