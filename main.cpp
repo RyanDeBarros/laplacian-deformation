@@ -37,13 +37,14 @@ class LaplacianDeformationTool
 	decltype(selection_widget.mode) previous_on_mode = decltype(selection_widget.mode)::OFF;
 	bool manually_set_gizmo_operation = false;
 	bool manually_set_selection_state = false;
+	bool prev_hard_constraints = false;
 
 	MeshData mesh;
 	SelectionSetManager selection_sets;
 
 	struct
 	{
-		bool enabled = false;
+		bool enabled = true;
 		bool call_deform = false;
 		double last_time_since_deform = 0.0;
 		double deform_per_second = 5.0;
@@ -62,6 +63,7 @@ private:
 	bool key_callback(unsigned int key, int mod);
 	void open_mesh();
 	void save_mesh();
+	void selection_changed();
 	void update_selection_colors();
 	void deform();
 	void manual_deform();
@@ -122,11 +124,13 @@ void LaplacianDeformationTool::run()
 		};
 	selection_widget.callback = [&]()
 		{
-			selection_sets.selection_callback([&](Eigen::VectorXd& set, Eigen::Array<double, Eigen::Dynamic, 1>& and_visible) {
-					screen_space_selection(mesh.get_vertices(), mesh.get_faces(), mesh.get_tree(),
-						viewer.core().view, viewer.core().proj, viewer.core().viewport, selection_widget.L, set, and_visible); });
-			update_selection_colors();
-			recenter_gizmo();
+			if (selection_sets.selection_callback([&](Eigen::VectorXd& set, Eigen::Array<double, Eigen::Dynamic, 1>&and_visible) {
+				screen_space_selection(mesh.get_vertices(), mesh.get_faces(), mesh.get_tree(),
+					viewer.core().view, viewer.core().proj, viewer.core().viewport, selection_widget.L, set, and_visible); }))
+			{
+				selection_changed();
+				recenter_gizmo();
+			}
 		};
 	viewer.callback_key_pressed = [&](decltype(viewer)&, unsigned int key, int mod)
 		{
@@ -180,8 +184,9 @@ void LaplacianDeformationTool::init_widgets()
 void LaplacianDeformationTool::launch()
 {
 	viewer.data().point_size = 8.0f;
-	update_selection_colors();
+	selection_changed();
 	gizmo_widget.visible = false;
+	prev_hard_constraints = mesh.hard_constraints;
 	viewer.launch(false, "Laplacian Deformation Tool", 1920, 1080);
 }
 
@@ -234,7 +239,7 @@ void LaplacianDeformationTool::render_gui()
 	if (ImGui::Button("Deselect"))
 	{
 		selection_sets.deselect();
-		update_selection_colors();
+		selection_changed();
 		if (selection_sets.state == decltype(selection_sets.state)::CONTROL)
 			recenter_gizmo();
 	}
@@ -406,6 +411,12 @@ void LaplacianDeformationTool::save_mesh()
 	mesh.save(igl::file_dialog_save());
 }
 
+void LaplacianDeformationTool::selection_changed()
+{
+	mesh.recompute_solver = true;
+	update_selection_colors();
+}
+
 void LaplacianDeformationTool::update_selection_colors()
 {
 	viewer.data().set_points(mesh.get_vertices(), selection_sets.get_colors());
@@ -432,6 +443,11 @@ void LaplacianDeformationTool::deform()
 		Eigen::VectorXi user_constraint_indices(anchors.rows() + controls.rows());
 		user_constraint_indices << selection_sets.anchor_indices(), selection_sets.control_indices();
 
+		if (mesh.hard_constraints != prev_hard_constraints)
+		{
+			prev_hard_constraints = mesh.hard_constraints;
+			mesh.recompute_solver = true;
+		}
 		mesh.deform(user_constraints, user_constraint_indices);
 		viewer.data().set_mesh(mesh.get_vertices(), mesh.get_faces());
 		viewer.data().set_points(mesh.get_vertices(), selection_sets.get_colors());
@@ -441,9 +457,7 @@ void LaplacianDeformationTool::deform()
 void LaplacianDeformationTool::manual_deform()
 {
 	update_gizmo_transform();
-	std::cout << "beginning manual deform..." << std::endl;
 	deform();
-	std::cout << "...manual deform complete" << std::endl;
 	recenter_gizmo();
 }
 

@@ -82,31 +82,49 @@ void SelectionSetManager::deselect()
 	}
 }
 
-void SelectionSetManager::selection_callback(const std::function<void(Eigen::VectorXd&, Eigen::Array<double, Eigen::Dynamic, 1>&)>& screen_space_select)
+bool SelectionSetManager::selection_callback(const std::function<void(Eigen::VectorXd&, Eigen::Array<double, Eigen::Dynamic, 1>&)>& screen_space_select)
 {
 	Eigen::Array<double, Eigen::Dynamic, 1> and_visible = Eigen::Array<double, Eigen::Dynamic, 1>::Zero(selection.rows());
 	Eigen::VectorXd new_selection;
 	screen_space_select(new_selection, and_visible);
 	if (only_visible)
 		new_selection.array() *= and_visible;
+	bool selection_changed = false;
 	for (Eigen::Index i = 0; i < selection.rows(); ++i)
 	{
 		if (is_shift_pressed())
 		{
 			if (round(new_selection(i)))
+			{
+				if (selection(i) != (int)state)
+					selection_changed = true;
 				selection(i) = (int)state;
+			}
 		}
 		else if (is_ctrl_pressed())
 		{
 			if (round(new_selection(i)) && round(selection(i)) == (int)state)
+			{
+				if (selection(i) != 0)
+					selection_changed = true;
 				selection(i) = 0;
+			}
 		}
 		else
 		{
 			if (round(new_selection(i)))
+			{
+				if (selection(i) != (int)state)
+					selection_changed = true;
 				selection(i) = (int)state;
+			}
 			else if (round(selection(i)) == (int)state)
+			{
+				if (selection(i) != 0)
+					selection_changed = true;
 				selection(i) = 0;
+			}
 		}
 	}
+	return selection_changed;
 }

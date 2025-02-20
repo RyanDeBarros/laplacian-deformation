@@ -25,5 +25,5 @@ public:
 	Eigen::VectorXi control_indices() const;
 	Eigen::VectorXi indices(State state) const;
 	void deselect();
-	void selection_callback(const std::function<void(Eigen::VectorXd&, Eigen::Array<double, Eigen::Dynamic, 1>&)>& screen_space_select);
+	bool selection_callback(const std::function<void(Eigen::VectorXd&, Eigen::Array<double, Eigen::Dynamic, 1>&)>& screen_space_select);
 };
