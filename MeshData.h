@@ -37,7 +37,9 @@ private:
 		Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> solver;
 		Eigen::SparseMatrix<double> A_transpose;
 	} deform_cache;
-	Eigen::MatrixXd solve_vertices(const Eigen::MatrixXd& user_constraints, const Eigen::VectorXi& user_constraint_indices);
-	Eigen::MatrixXd solve_vertices_hard_constraints(const Eigen::MatrixXd& user_constraints, const Eigen::VectorXi& user_constraint_indices);
-	void solve_rotations(const Eigen::MatrixXd& old_vertices);
+	std::vector<Eigen::MatrixXd> arap_original_vectors;
+	void solve_vertices(const Eigen::MatrixXd& user_constraints, const Eigen::VectorXi& user_constraint_indices);
+	void solve_vertices_hard_constraints(const Eigen::MatrixXd& user_constraints, const Eigen::VectorXi& user_constraint_indices);
+	void setup_arap_original_vectors();
+	void solve_rotations();
 };

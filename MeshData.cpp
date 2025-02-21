@@ -30,33 +30,39 @@ void MeshData::deform(const Eigen::MatrixXd& user_constraints, const Eigen::Vect
 		return;
 
 	ldelta = laplacian * vertices;
-	Eigen::MatrixXd(MeshData::*solver)(const Eigen::MatrixXd&, const Eigen::VectorXi&);
+	void(MeshData::*solver)(const Eigen::MatrixXd&, const Eigen::VectorXi&);
 	if (hard_constraints)
 		solver = &MeshData::solve_vertices_hard_constraints;
 	else
 		solver = &MeshData::solve_vertices;
 
-	std::fill(rotations.begin(), rotations.end(), Eigen::Matrix3d::Identity());
-	Eigen::MatrixXd old_vertices = (this->*solver)(user_constraints, user_constraint_indices);
-	recompute_solver = false;
-	for (int i = 0; i < arap.max_iterations; ++i)
+	if (arap.max_iterations > 0)
 	{
-		solve_rotations(old_vertices);
+		recompute_solver = false;
+		Eigen::MatrixXd prev_vertices(vertices.rows(), vertices.cols());
+		std::fill(rotations.begin(), rotations.end(), Eigen::Matrix3d::Identity());
+		setup_arap_original_vectors();
 		(this->*solver)(user_constraints, user_constraint_indices);
-		if ((vertices - old_vertices).norm() < std::abs(arap.convergence_threshold))
-			break;
+		for (int i = 0; i < arap.max_iterations; ++i)
+		{
+			solve_rotations();
+			prev_vertices = vertices;
+			(this->*solver)(user_constraints, user_constraint_indices);
+			if ((vertices - prev_vertices).norm() < std::abs(arap.convergence_threshold))
+				break;
+		}
 	}
+	else
+		(this->*solver)(user_constraints, user_constraint_indices);
 }
 
-Eigen::MatrixXd MeshData::solve_vertices(const Eigen::MatrixXd& user_constraints, const Eigen::VectorXi& user_constraint_indices)
+void MeshData::solve_vertices(const Eigen::MatrixXd& user_constraints, const Eigen::VectorXi& user_constraint_indices)
 {
-	Eigen::MatrixXd old_vertices = vertices;
-
 	// construct B
 
 	Eigen::MatrixXd B(ldelta.rows() + user_constraints.rows(), ldelta.cols());
 	for (Eigen::Index i = 0; i < ldelta.rows(); ++i)
-		B.row(i) = (rotations[i] * ldelta.row(i).transpose()).transpose(); // TODO update ldelta each iteration?
+		B.row(i) = (rotations[i] * ldelta.row(i).transpose()).transpose();
 	B.bottomRows(user_constraints.rows()) = user_constraints;
 
 	if (recompute_solver)
@@ -80,13 +86,10 @@ Eigen::MatrixXd MeshData::solve_vertices(const Eigen::MatrixXd& user_constraints
 		deform_cache.solver.compute(deform_cache.A_transpose * A);
 	}
 	vertices = deform_cache.solver.solve(deform_cache.A_transpose * B);
-	return old_vertices;
 }
 
-Eigen::MatrixXd MeshData::solve_vertices_hard_constraints(const Eigen::MatrixXd& user_constraints, const Eigen::VectorXi& user_constraint_indices)
+void MeshData::solve_vertices_hard_constraints(const Eigen::MatrixXd& user_constraints, const Eigen::VectorXi& user_constraint_indices)
 {
-	Eigen::MatrixXd old_vertices = vertices;
-
 	std::vector<Eigen::Triplet<double>> triplets;
 	triplets.reserve(laplacian.nonZeros());
 	std::unordered_map<Eigen::Index, Eigen::Index> ui_row_map;
@@ -109,7 +112,7 @@ Eigen::MatrixXd MeshData::solve_vertices_hard_constraints(const Eigen::MatrixXd&
 		if (it != ui_row_map.end())
 			B.row(i) = user_constraints.row(it->second);
 		else
-			B.row(i) = (rotations[i] * ldelta.row(i).transpose()).transpose(); // TODO update ldelta each iteration?
+			B.row(i) = (rotations[i] * ldelta.row(i).transpose()).transpose();
 	}
 
 	if (recompute_solver)
@@ -130,27 +133,33 @@ Eigen::MatrixXd MeshData::solve_vertices_hard_constraints(const Eigen::MatrixXd&
 		deform_cache.solver.compute(deform_cache.A_transpose * A);
 	}
 	vertices = deform_cache.solver.solve(deform_cache.A_transpose * B);
-	return old_vertices;
 }
 
-void MeshData::solve_rotations(const Eigen::MatrixXd& old_vertices) // TODO ask whether to use original vector positions and ldeltas, or the updated ones from previous iterations
+void MeshData::setup_arap_original_vectors()
+{
+	arap_original_vectors.resize(vertices.rows());
+	for (Eigen::Index i = 0; i < vertices.rows(); ++i)
+	{
+		auto& original_vectors = arap_original_vectors[i];
+		original_vectors.resize(3, adjacency[i].size());
+		Eigen::Vector3d original_center = vertices.row(i);
+		for (Eigen::Index j = 0; j < adjacency[i].size(); ++j)
+			original_vectors.col(j) = vertices.row(adjacency[i][j]).transpose() - original_center;
+	}
+}
+
+void MeshData::solve_rotations()
 {
 	// ARAP extension
 
 	for (Eigen::Index i = 0; i < vertices.rows(); ++i)
 	{
-		Eigen::MatrixXd original_vectors(3, adjacency[i].size());
 		Eigen::MatrixXd deformed_vectors(adjacency[i].size(), 3);
-
-		Eigen::Vector3d original_center = old_vertices.row(i);
 		Eigen::RowVector3d deformed_center = vertices.row(i);
-
 		for (Eigen::Index j = 0; j < adjacency[i].size(); ++j)
-		{
-			original_vectors.col(j) = old_vertices.row(adjacency[i][j]).transpose() - original_center;
 			deformed_vectors.row(j) = vertices.row(adjacency[i][j]) - deformed_center;
-		}
-		Eigen::Matrix3d covariance = original_vectors * deformed_vectors;
+
+		Eigen::Matrix3d covariance = arap_original_vectors[i] * deformed_vectors;
 
 		Eigen::JacobiSVD<Eigen::Matrix3d> svd(covariance, Eigen::ComputeFullU | Eigen::ComputeFullV);
 		Eigen::Matrix3d U = svd.matrixU();
