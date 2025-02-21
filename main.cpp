@@ -38,6 +38,7 @@ class LaplacianDeformationTool
 	bool manually_set_gizmo_operation = false;
 	bool manually_set_selection_state = false;
 	bool prev_hard_constraints = false;
+	bool set_as_reference_mesh = true;
 
 	MeshData mesh;
 	SelectionSetManager selection_sets;
@@ -86,6 +87,7 @@ static void path_drop_callback(GLFWwindow* window, int count, const char** paths
 	{
 		auto tool = (LaplacianDeformationTool*)glfwGetWindowUserPointer(window);
 		tool->init_mesh(paths[0]);
+		glfwFocusWindow(window);
 	}
 }
 
@@ -168,6 +170,7 @@ void LaplacianDeformationTool::init_mesh(const std::string& filepath)
 		viewer.data().set_points(mesh.get_vertices(), selection_sets.get_colors());
 		viewer.data().set_face_based(true);
 		gizmo_widget.visible = false;
+		set_as_reference_mesh = true;
 	}
 }
 
@@ -302,13 +305,20 @@ void LaplacianDeformationTool::render_gui()
 	}
 	ImGui::EndChild();
 
-	if (ImGui::CollapsingHeader("ARAP parameters"))
+	if (ImGui::CollapsingHeader("Deform settings"))
 	{
 		ImGui::SetNextItemWidth(200);
 		ImGui::SliderInt("max iterations", &mesh.arap.max_iterations, 0, 20);
 		ImGui::SetNextItemWidth(200);
 		if (ImGui::InputFloat("convergence threshold", &mesh.arap.convergence_threshold))
 			mesh.arap.convergence_threshold = std::abs(mesh.arap.convergence_threshold);
+		ImGui::BeginDisabled(set_as_reference_mesh);
+		if (ImGui::Button("Set as reference mesh"))
+		{
+			mesh.set_as_reference_mesh();
+			set_as_reference_mesh = true;
+		}
+		ImGui::EndDisabled();
 	}
 
 	if (ImGui::CollapsingHeader("Mesh settings"))
@@ -422,20 +432,26 @@ void LaplacianDeformationTool::update_selection_colors()
 	viewer.data().set_points(mesh.get_vertices(), selection_sets.get_colors());
 }
 
+static Eigen::Vector3f extract_position(const Eigen::Matrix4f& matrix)
+{
+	return Eigen::Vector3f(matrix(0, 3), matrix(1, 3), matrix(2, 3));
+}
+
 void LaplacianDeformationTool::deform()
 {
 	if (auto_deform.delta_gizmo_transform != Eigen::Matrix4f::Identity())
 	{
 		Eigen::MatrixXd anchors = selection_sets.filter_anchor_vertices(mesh.get_vertices());
 		Eigen::MatrixXd controls = selection_sets.filter_control_vertices(mesh.get_vertices());
-		Eigen::RowVectorXd mean_control_point = controls.colwise().mean();
+		Eigen::Vector3d gizmo_position = extract_position(gizmo_widget.T).cast<double>();
 		Eigen::Matrix4d transform = auto_deform.delta_gizmo_transform.cast<double>();
+		// rotate and scale the control points relative to the gizmo's position
 		for (Eigen::Index i = 0; i < controls.rows(); ++i)
 		{
-			Eigen::VectorXd point3d = (controls.row(i) - mean_control_point).transpose();
+			Eigen::Vector3d point3d = controls.row(i).transpose() - gizmo_position;
 			Eigen::Vector4d point4d(point3d(0), point3d(1), point3d(2), 1.0);
 			point4d = transform * point4d;
-			controls.row(i) = Eigen::Vector3d(point4d(0), point4d(1), point4d(2)).transpose() + mean_control_point;
+			controls.row(i) = Eigen::Vector3d(point4d(0), point4d(1), point4d(2)) + gizmo_position;
 		}
 
 		Eigen::MatrixXd user_constraints(anchors.rows() + controls.rows(), anchors.cols());
@@ -449,6 +465,7 @@ void LaplacianDeformationTool::deform()
 			mesh.recompute_solver = true;
 		}
 		mesh.deform(user_constraints, user_constraint_indices);
+		set_as_reference_mesh = false;
 		viewer.data().set_mesh(mesh.get_vertices(), mesh.get_faces());
 		viewer.data().set_points(mesh.get_vertices(), selection_sets.get_colors());
 	}
@@ -490,7 +507,11 @@ void LaplacianDeformationTool::sync_auto_deform_enabled()
 
 void LaplacianDeformationTool::update_gizmo_transform()
 {
-	auto_deform.delta_gizmo_transform = gizmo_widget.T * auto_deform.last_gizmo_transform.inverse();
+	Eigen::Vector3f translation = extract_position(gizmo_widget.T) - extract_position(auto_deform.last_gizmo_transform);
+	Eigen::Matrix3f rotation_scale = gizmo_widget.T.block(0, 0, 3, 3) * auto_deform.last_gizmo_transform.block(0, 0, 3, 3).inverse();
+	auto_deform.delta_gizmo_transform = Eigen::Matrix4f::Identity();
+	auto_deform.delta_gizmo_transform.block(0, 3, 3, 1) = translation;
+	auto_deform.delta_gizmo_transform.block(0, 0, 3, 3) = rotation_scale;
 	auto_deform.last_gizmo_transform = gizmo_widget.T;
 }
 
@@ -500,7 +521,7 @@ void LaplacianDeformationTool::recenter_gizmo()
 	{
 		Eigen::MatrixXd controls = selection_sets.filter_control_vertices(mesh.get_vertices());
 		Eigen::Vector3f mean_control = controls.colwise().mean().cast<float>().transpose();
-		Eigen::Vector3f position(gizmo_widget.T(0, 3), gizmo_widget.T(1, 3), gizmo_widget.T(2, 3));
+		Eigen::Vector3f position = extract_position(gizmo_widget.T);
 		gizmo_widget.T.block(0, 3, 3, 1) = mean_control;
 		auto_deform.last_gizmo_transform.block(0, 3, 3, 1) += (mean_control - position);
 		gizmo_widget.visible = true;

@@ -8,10 +8,8 @@ class MeshData
 	Eigen::MatrixXd vertices;
 	Eigen::MatrixXi faces;
 	igl::AABB<Eigen::MatrixXd, 3> tree;
-	Eigen::SparseMatrix<double> laplacian;
 	std::vector<std::vector<Eigen::Index>> adjacency;
 	std::vector<Eigen::Matrix3d> rotations;
-	Eigen::MatrixXd ldelta;
 
 public:
 	struct
@@ -30,6 +28,7 @@ public:
 	
 	bool recompute_solver = true;
 	void deform(const Eigen::MatrixXd& user_constraints, const Eigen::VectorXi& user_constraint_indices);
+	void set_as_reference_mesh();
 
 private:
 	struct
@@ -37,9 +36,13 @@ private:
 		Eigen::SimplicialLLT<Eigen::SparseMatrix<double>> solver;
 		Eigen::SparseMatrix<double> A_transpose;
 	} deform_cache;
-	std::vector<Eigen::MatrixXd> arap_original_vectors;
+	struct
+	{
+		Eigen::SparseMatrix<double> laplacian;
+		Eigen::MatrixXd ldelta;
+		std::vector<Eigen::MatrixXd> arap_vectors;
+	} deform_reference;
 	void solve_vertices(const Eigen::MatrixXd& user_constraints, const Eigen::VectorXi& user_constraint_indices);
 	void solve_vertices_hard_constraints(const Eigen::MatrixXd& user_constraints, const Eigen::VectorXi& user_constraint_indices);
-	void setup_arap_original_vectors();
 	void solve_rotations();
 };
