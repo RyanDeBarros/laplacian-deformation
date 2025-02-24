@@ -55,6 +55,7 @@ void MeshData::deform(const Eigen::MatrixXd& user_constraints, const Eigen::Vect
 void MeshData::set_as_reference_mesh()
 {
 	igl::cotmatrix(vertices, faces, deform_reference.laplacian);
+	deform_reference.laplacian = (-deform_reference.laplacian).eval();
 	recompute_solver = true;
 	deform_reference.ldelta = deform_reference.laplacian * vertices;
 	deform_reference.arap_vectors.resize(vertices.rows());
