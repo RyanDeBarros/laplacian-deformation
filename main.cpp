@@ -1,3 +1,5 @@
+#define IGL_VIEWER_VIEWER_QUIET
+
 #include "Main.h"
 
 #include <igl/screen_space_selection.h>
@@ -143,7 +145,8 @@ void LaplacianDeformationTool::run()
 		glfwSetDropCallback(viewer.window, &path_drop_callback);
 		return false;
 		};
-	std::cout << R"(
+	std::cout << R"(Welcome to the Laplacian Deformation Tool!
+
 Usage:
   1        Selection select NEUTRAL
   2        Selection select ANCHOR
@@ -225,16 +228,22 @@ void LaplacianDeformationTool::render_gui()
 				set_selection_state(SelectionSetManager::State::NEUTRAL);
 				ImGui::EndTabItem();
 			}
+			if (ImGui::IsItemHovered())
+				ImGui::SetTooltip("Disable selection");
 			if (ImGui::BeginTabItem("ANCHOR"))
 			{
 				set_selection_state(SelectionSetManager::State::ANCHOR);
 				ImGui::EndTabItem();
 			}
+			if (ImGui::IsItemHovered())
+				ImGui::SetTooltip("Select anchor vertices");
 			if (ImGui::BeginTabItem("CONTROL"))
 			{
 				set_selection_state(SelectionSetManager::State::CONTROL);
 				ImGui::EndTabItem();
 			}
+			if (ImGui::IsItemHovered())
+				ImGui::SetTooltip("Select control vertices");
 		}
 		ImGui::EndTabBar();
 	}
