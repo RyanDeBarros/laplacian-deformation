@@ -55,7 +55,14 @@ void MeshData::deform(const Eigen::MatrixXd& user_constraints, const Eigen::Vect
 void MeshData::set_as_reference_mesh()
 {
 	igl::cotmatrix(vertices, faces, deform_reference.laplacian);
-	deform_reference.laplacian = (-deform_reference.laplacian).eval();
+	// igl::cotmatrix isn't normalized:
+	Eigen::VectorXd diag = deform_reference.laplacian.diagonal();
+	for (Eigen::Index i = 0; i < diag.rows(); ++i)
+		if (diag(i) == 0) diag(i) = 1.0; // isolated vertices
+	Eigen::SparseMatrix<double> identity(deform_reference.laplacian.rows(), deform_reference.laplacian.cols());
+	identity.setIdentity();
+	deform_reference.laplacian = (identity * diag.cwiseInverse().asDiagonal()) * deform_reference.laplacian;
+
 	recompute_solver = true;
 	deform_reference.ldelta = deform_reference.laplacian * vertices;
 	deform_reference.arap_vectors.resize(vertices.rows());
