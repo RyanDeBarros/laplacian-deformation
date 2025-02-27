@@ -28,10 +28,20 @@ Eigen::RowVector3f vertex_colors::neutral = Eigen::RowVector3f(0.5f, 0.5f, 0.5f)
 Eigen::RowVector3f vertex_colors::anchor = Eigen::RowVector3f(0.9f, 0.3f, 0.3f);
 Eigen::RowVector3f vertex_colors::control = Eigen::RowVector3f(0.3f, 0.9f, 0.3f);
 
+class LaplacianDeformationTool;
+
+struct CallbackWidget : public igl::opengl::glfw::imgui::ImGuiWidget
+{
+	LaplacianDeformationTool* tool = nullptr;
+
+	virtual bool key_down(int key, int modifiers) override;
+};
+
 class LaplacianDeformationTool
 {
 	igl::opengl::glfw::Viewer viewer;
 	igl::opengl::glfw::imgui::ImGuiPlugin imgui_plugin;
+	CallbackWidget callback;
 	igl::opengl::glfw::imgui::ImGuiMenu menu_widget;
 	igl::opengl::glfw::imgui::ImGuizmoWidget gizmo_widget;
 	igl::opengl::glfw::imgui::SelectionWidget selection_widget;
@@ -63,7 +73,11 @@ private:
 	void init_widgets();
 	void launch();
 	void render_gui();
-	bool key_callback(unsigned int key, int mod);
+
+public:
+	bool key_callback(int key, int mod);
+
+private:
 	void open_mesh();
 	void save_mesh();
 	void selection_changed();
@@ -81,6 +95,11 @@ int main()
 {
 	LaplacianDeformationTool tool;
 	tool.run();
+}
+
+bool CallbackWidget::key_down(int key, int modifiers)
+{
+	return tool->key_callback(key, modifiers);
 }
 
 static void path_drop_callback(GLFWwindow* window, int count, const char** paths)
@@ -136,10 +155,6 @@ void LaplacianDeformationTool::run()
 				recenter_gizmo();
 			}
 		};
-	viewer.callback_key_pressed = [&](decltype(viewer)&, unsigned int key, int mod)
-		{
-			return key_callback(key, mod);
-		};
 	viewer.callback_init = [this](decltype(viewer)& viewer) {
 		glfwSetWindowUserPointer(viewer.window, this);
 		glfwSetDropCallback(viewer.window, &path_drop_callback);
@@ -180,6 +195,8 @@ void LaplacianDeformationTool::init_mesh(const std::string& filepath)
 void LaplacianDeformationTool::init_widgets()
 {
 	viewer.plugins.push_back(&imgui_plugin);
+	callback.tool = this;
+	imgui_plugin.widgets.push_back(&callback);
 	imgui_plugin.widgets.push_back(&menu_widget);
 	imgui_plugin.widgets.push_back(&gizmo_widget);
 	imgui_plugin.widgets.push_back(&selection_widget);
@@ -347,7 +364,7 @@ void LaplacianDeformationTool::render_gui()
 	ImGui::End();
 }
 
-bool LaplacianDeformationTool::key_callback(unsigned int key, int mod)
+bool LaplacianDeformationTool::key_callback(int key, int mod)
 {
 	switch (key)
 	{
@@ -413,6 +430,20 @@ bool LaplacianDeformationTool::key_callback(unsigned int key, int mod)
 		if (mod & GLFW_MOD_SHIFT && !gizmo_widget.T.block(0, 0, 3, 3).isIdentity())
 		{
 			reset_gizmo_orientation();
+			return true;
+		}
+		return false;
+	case GLFW_KEY_O:
+		if (mod & GLFW_MOD_CONTROL)
+		{
+			open_mesh();
+			return true;
+		}
+		return false;
+	case GLFW_KEY_S:
+		if (mod & GLFW_MOD_CONTROL)
+		{
+			save_mesh();
 			return true;
 		}
 		return false;
