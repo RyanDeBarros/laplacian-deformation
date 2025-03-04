@@ -25,8 +25,9 @@ igl_include(imgui)
 #igl_include(restricted triangle)
 
 # Add your project files
-file(GLOB SRC_FILES *.cpp)
-add_executable(${PROJECT_NAME} ${SRC_FILES})
+file(GLOB_RECURSE SRC_FILES src/*.cpp)
+file(GLOB_RECURSE HEADER_FILES src/*.h)
+add_executable(${PROJECT_NAME} ${SRC_FILES} ${HEADER_FILES})
 
 # Link igl (and the glfw module) to your project
 target_link_libraries(${PROJECT_NAME} PUBLIC 

@@ -172,6 +172,8 @@ Usage:
   E        Execute deform (if auto-deform is off)
   A        Toggle auto-deform
   H        Toggle hard constraints for deformation
+  SHIFT    While selecting, add to current selection
+  CTRL     While selecting, remove from current selection
 )";
 	launch();
 }
