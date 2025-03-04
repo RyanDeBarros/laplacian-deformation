@@ -88,7 +88,7 @@ bool SelectionSetManager::selection_callback(const std::function<void(Eigen::Vec
 	Eigen::VectorXd new_selection;
 	screen_space_select(new_selection, and_visible);
 	if (only_visible)
-		new_selection.array() *= and_visible;
+		new_selection = (and_visible.array().cast<bool>() && (new_selection.array().abs() > 0.5)).cast<double>();
 	bool selection_changed = false;
 	for (Eigen::Index i = 0; i < selection.rows(); ++i)
 	{

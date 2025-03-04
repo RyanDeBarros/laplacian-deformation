@@ -147,9 +147,11 @@ void LaplacianDeformationTool::run()
 		};
 	selection_widget.callback = [&]()
 		{
-			if (selection_sets.selection_callback([&](Eigen::VectorXd& set, Eigen::Array<double, Eigen::Dynamic, 1>&and_visible) {
-				screen_space_selection(mesh.get_vertices(), mesh.get_faces(), mesh.get_tree(),
-					viewer.core().view, viewer.core().proj, viewer.core().viewport, selection_widget.L, set, and_visible); }))
+			if (selection_sets.selection_callback([&](Eigen::VectorXd& set, Eigen::Array<double, Eigen::Dynamic, 1>&and_visible)
+				{
+					screen_space_selection(mesh.get_vertices(), mesh.get_faces(), mesh.get_tree(), viewer.core().view,
+						viewer.core().proj, viewer.core().viewport, selection_widget.L, set, and_visible);
+				}))
 			{
 				selection_changed();
 				recenter_gizmo();
